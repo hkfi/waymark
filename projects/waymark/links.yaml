@@ -1,0 +1,7 @@
+version: 1
+links:
+  - id: local-repo
+    label: Local repo
+    url: file:///Users/hirokifuruichi/code/waymark
+    type: repo
+    environment: local

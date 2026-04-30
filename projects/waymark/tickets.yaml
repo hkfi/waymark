@@ -1,0 +1,73 @@
+version: 1
+tickets:
+  - id: agent-context-foundation
+    title: Agent context foundation
+    status: done
+    priority: high
+    summary: Add repo-level AI context, development standards, and a self-referential Waymark project memory folder.
+    acceptance_criteria:
+      - Agents have a short repo entrypoint.
+      - Architecture and development standards are documented.
+      - Waymark can open this repo as a Waymark workspace.
+      - Local tickets, decisions, and ideas exist as readable files.
+    linked_files:
+      - AGENTS.md
+      - ARCHITECTURE.md
+      - docs/development-standards.md
+      - docs/ai-workflows.md
+    linked_decisions:
+      - self-workspace-in-repo
+    linked_threads: []
+    generated_prompts: []
+  - id: refine-workspace-file-contract
+    title: Refine workspace file contract
+    status: next
+    priority: high
+    summary: Tighten schemas and UX around project.yaml, tickets.yaml, links.yaml, threads.yaml, ideas, decisions, and generated prompts.
+    acceptance_criteria:
+      - File contract is documented with examples.
+      - Validation errors point to specific files and fields.
+      - Existing sample workspace remains readable.
+      - Waymark self workspace remains readable.
+    linked_files:
+      - src/workspace.ts
+      - ARCHITECTURE.md
+    linked_decisions:
+      - markdown-yaml-source-of-truth
+    linked_threads: []
+    generated_prompts: []
+  - id: improve-handoff-context-picker
+    title: Improve handoff context picker
+    status: next
+    priority: medium
+    summary: Make the handoff panel better at suggesting linked files, decisions, thread summaries, and project standards.
+    acceptance_criteria:
+      - Handoff preview can include project standards.
+      - User can see why each context item was suggested.
+      - Generated prompt remains readable Markdown.
+    linked_files:
+      - src/App.tsx
+      - src/workspace.ts
+      - docs/ai-workflows.md
+    linked_decisions: []
+    linked_threads: []
+    generated_prompts: []
+  - id: mvp-scope-governance
+    title: MVP scope governance
+    status: done
+    priority: high
+    summary: Define MVP boundaries, exit criteria, and roadmap docs so agents know when to avoid scope creep and when MVP has ended.
+    acceptance_criteria:
+      - MVP boundaries are documented as temporary scope controls.
+      - Exit criteria explain when Waymark is no longer in MVP.
+      - Roadmap separates MVP, hardening, post-MVP, V1, and later work.
+      - Agent entrypoints point to the scope docs before adding product surface area.
+    linked_files:
+      - docs/mvp-boundaries.md
+      - docs/mvp-exit-criteria.md
+      - docs/roadmap.md
+      - .agent/rules/mvp-boundaries.md
+      - AGENTS.md
+    linked_decisions: []
+    linked_threads: []
+    generated_prompts: []

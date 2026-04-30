@@ -1,0 +1,18 @@
+version: 1
+name: Waymark
+slug: waymark
+status: active
+stage: prototype
+summary: Local-first project cockpit for AI-assisted software work.
+current_focus: Make Waymark useful for developing Waymark through durable project memory, local tickets, and agent handoffs.
+tags:
+  - local-first
+  - ai-workflow
+  - tauri
+  - react
+repos:
+  - id: app
+    name: Waymark app
+    path: ~/code/waymark
+links:
+  repo: ~/code/waymark

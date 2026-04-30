@@ -66,6 +66,28 @@ The app can seed a sample workspace at:
 /Users/hirokifuruichi/code/waymark/sample-workspace
 ```
 
+This repository is also a Waymark-readable workspace. Open the repo root:
+
+```txt
+/Users/hirokifuruichi/code/waymark
+```
+
+Waymark will read `waymark.yaml` and `projects/waymark/` so the app can be used to manage its own local tickets, decisions, ideas, and AI handoffs.
+
+## AI Agent Context
+
+Start with:
+
+- [`AGENTS.md`](AGENTS.md): repo entrypoint for AI agents.
+- [`CLAUDE.md`](CLAUDE.md): Claude-compatible pointer to the same rules.
+- [`ARCHITECTURE.md`](ARCHITECTURE.md): system boundaries and invariants.
+- [`docs/development-standards.md`](docs/development-standards.md): coding and UI standards.
+- [`docs/ai-workflows.md`](docs/ai-workflows.md): how Waymark should support agent handoffs.
+- [`docs/mvp-boundaries.md`](docs/mvp-boundaries.md): what not to build during MVP.
+- [`docs/mvp-exit-criteria.md`](docs/mvp-exit-criteria.md): how to know when MVP is over.
+- [`docs/roadmap.md`](docs/roadmap.md): strategic product roadmap.
+- [`projects/waymark/`](projects/waymark): app-readable project memory for Waymark itself.
+
 ## Core Workflow
 
 1. Open or seed a Waymark workspace.
