@@ -1,0 +1,22 @@
+[package]
+name = "waymark"
+version = "0.1.0"
+description = "A local-first project cockpit for AI-assisted software work."
+authors = ["Waymark"]
+edition = "2021"
+
+[lib]
+name = "waymark_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "waymark"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = [] }
