@@ -77,6 +77,15 @@ const linkSchema = z.object({
 
 const today = () => new Date().toISOString().slice(0, 10);
 
+function isoDate(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return undefined;
+    return value.toISOString().slice(0, 10);
+  }
+  return String(value);
+}
+
 export function joinPath(...parts: string[]) {
   return parts
     .filter(Boolean)
@@ -147,7 +156,7 @@ async function loadNotes(projectPath: string, type: "idea" | "decision") {
       type,
       title: String(meta.title ?? titleFromBody ?? entry.name.replace(/\.md$/, "")),
       path: entry.path,
-      date: meta.date ? String(meta.date) : undefined,
+      date: isoDate(meta.date),
       status: meta.status ? String(meta.status) : undefined,
       linked_tickets: Array.isArray(meta.linked_tickets)
         ? meta.linked_tickets.map(String)
@@ -513,6 +522,143 @@ ${include("links") ? `## Project Links\n\n${links.length ? links.map((link) => `
 - Update relevant Waymark notes, tickets, or decisions if behavior changes.
 - When done, summarize changed files, verification, and any follow-up tasks.
 `;
+}
+
+/**
+ * Build an in-memory workspace for visual development without Tauri.
+ * Used by `App.tsx` when `?demo=1` is present in the URL.
+ */
+export function buildDemoWorkspace(): WorkspaceData {
+  const rootPath = "/demo/sample-workspace";
+  const glossa: WaymarkProject = {
+    rootPath: `${rootPath}/projects/glossa`,
+    config: {
+      version: 1,
+      name: "Glossa",
+      slug: "glossa",
+      status: "active",
+      stage: "mvp",
+      summary:
+        "AI language learning app focused on daily reading, roleplay, and learner-friendly explanations.",
+      current_focus: "Ship the daily reading MVP.",
+      tags: ["ai", "language-learning", "mobile"],
+      repos: [
+        { id: "web", name: "Web app", path: "~/Code/glossa-web", url: "https://github.com/example/glossa-web" },
+        { id: "mobile", name: "Mobile app", path: "~/Code/glossa-mobile", url: "https://github.com/example/glossa-mobile" },
+      ],
+      links: { production: "https://glossa.app", design: "https://figma.com/example" },
+    },
+    links: [],
+    tickets: [
+      {
+        id: "daily-reading-mvp",
+        title: "Daily reading MVP",
+        status: "now",
+        priority: "high",
+        summary: "Build the first usable daily reading flow with saved progress and feedback.",
+        acceptance_criteria: [
+          "User can open today's reading.",
+          "User can answer comprehension questions.",
+          "Progress is saved locally or remotely.",
+          "Errors are visible during QA.",
+        ],
+        linked_files: ["specs/daily-reading.md"],
+        linked_decisions: ["mvp-reading-first"],
+        linked_threads: ["codex-daily-reading"],
+        generated_prompts: [],
+      },
+      {
+        id: "article-import",
+        title: "Article import flow",
+        status: "next",
+        priority: "medium",
+        summary: "Let a learner import an article and turn it into a reading lesson.",
+        acceptance_criteria: [],
+        linked_files: [],
+        linked_decisions: [],
+        linked_threads: [],
+        generated_prompts: [],
+      },
+    ],
+    threads: [
+      {
+        id: "codex-daily-reading",
+        provider: "codex",
+        title: "Daily reading implementation brainstorm",
+        status: "active",
+        summary_file: "ai/thread-summaries/codex-daily-reading.md",
+        linked_tickets: ["daily-reading-mvp"],
+      },
+    ],
+    ideas: [
+      {
+        id: "coach-voice",
+        type: "idea",
+        title: "Coach voice experiments",
+        path: `${rootPath}/projects/glossa/ideas/coach-voice.md`,
+        date: "2026-04-29",
+        status: "open",
+        linked_tickets: [],
+        body: "Try a warmer explanation tone.",
+      },
+    ],
+    decisions: [
+      {
+        id: "mvp-reading-first",
+        type: "decision",
+        title: "MVP reading first",
+        path: `${rootPath}/projects/glossa/decisions/mvp-reading-first.md`,
+        date: "2026-04-29",
+        status: "accepted",
+        linked_tickets: ["daily-reading-mvp"],
+        body: "Prioritize the daily reading loop before roleplay or flashcards.",
+      },
+    ],
+    warnings: ['Ticket "Article import flow" has no acceptance criteria.'],
+  };
+  const openclaw: WaymarkProject = {
+    rootPath: `${rootPath}/projects/openclaw`,
+    config: {
+      version: 1,
+      name: "OpenClaw",
+      slug: "openclaw",
+      status: "exploring",
+      stage: "prototype",
+      summary: "Embeddable AI clone widget for product sites.",
+      current_focus: "Define the widget API and demo embed flow.",
+      tags: ["widget", "ai", "saas"],
+      repos: [{ id: "widget", name: "Widget repo", path: "~/Code/openclaw" }],
+      links: {},
+    },
+    links: [],
+    tickets: [
+      {
+        id: "embed-api",
+        title: "Widget embed API",
+        status: "now",
+        priority: "high",
+        summary: "Design the script tag and initialization contract for hosted demos.",
+        acceptance_criteria: [
+          "A static HTML page can embed the widget.",
+          "The widget accepts a public config object.",
+        ],
+        linked_files: [],
+        linked_decisions: [],
+        linked_threads: [],
+        generated_prompts: [],
+      },
+    ],
+    threads: [],
+    ideas: [],
+    decisions: [],
+    warnings: [],
+  };
+  return {
+    rootPath,
+    config: { version: 1, name: "Waymark Sample", projects_dir: "projects" },
+    projects: [glossa, openclaw],
+    warnings: [],
+  };
 }
 
 export function ticketWarnings(project: WaymarkProject, ticket: Ticket) {

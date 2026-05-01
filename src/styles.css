@@ -53,13 +53,16 @@
   --radius-2: 5px;
 
   /* layout grid templates */
-  --grid-template-columns-shell: 240px minmax(0, 1fr) 380px;
+  --grid-template-columns-shell: 220px minmax(0, 1fr) 340px;
+  --grid-template-columns-shell-wide: 240px minmax(0, 1fr) 380px;
   --grid-template-columns-stats: repeat(6, minmax(0, 1fr));
-  --grid-template-columns-ticket: 26px 110px minmax(0, 1fr) auto 200px 72px;
-  --grid-template-columns-decision: 140px minmax(0, 1fr) 90px 90px minmax(0, 1fr);
-  --grid-template-columns-idea: 140px minmax(0, 1fr) 60px;
-  --grid-template-columns-activity: 60px 16px 60px minmax(0, 1fr);
-  --grid-template-columns-link: 70px 90px minmax(0, 1fr) auto;
+  --grid-template-columns-ticket: 26px minmax(60px, 110px) minmax(120px, 2fr) auto minmax(0, 1fr) 56px;
+  --grid-template-columns-ticket-narrow: 26px minmax(40px, 80px) minmax(80px, 1fr) auto 50px;
+  --grid-template-columns-decision: minmax(80px, 130px) minmax(120px, 2fr) auto minmax(0, 86px) minmax(0, 1fr);
+  --grid-template-columns-decision-narrow: minmax(40px, 100px) minmax(80px, 1fr) auto minmax(0, 80px);
+  --grid-template-columns-idea: minmax(60px, 130px) minmax(80px, 1fr) 60px;
+  --grid-template-columns-activity: minmax(60px, 80px) 12px 36px minmax(0, 1fr);
+  --grid-template-columns-link: 60px minmax(0, 90px) minmax(0, 1fr) auto;
   --grid-template-columns-order: 24px auto 110px minmax(0, 1fr) 24px;
   --grid-template-columns-proj: 16px minmax(0, 1fr) auto;
 }
@@ -80,6 +83,11 @@
   button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
   input, textarea, select { font: inherit; color: inherit; }
   code { font-family: var(--font-mono); font-size: 0.92em; color: var(--color-ink-soft); background: var(--color-surface-3); padding: 0 4px; border-radius: var(--radius-1); }
+}
+
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
 }
 
 /* small reusable patterns that compose many utilities — kept here, not copy-pasted in JSX */
