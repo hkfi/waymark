@@ -39,6 +39,7 @@ import type {
   WorkspaceData,
 } from "./types";
 import {
+  buildDemoWorkspace,
   buildPrompt,
   createSampleWorkspace,
   loadWorkspace,
@@ -205,12 +206,104 @@ function Flag({
     <span
       title={title}
       className={cx(
-        "inline-flex items-center gap-0.5 h-4 px-1 rounded-[3px] border font-mono text-[9.5px]",
+        "inline-flex items-center gap-0.5 h-4 px-1 rounded-[3px] border font-mono text-[9.5px] shrink-0",
         tones[tone],
       )}
     >
       {children}
     </span>
+  );
+}
+
+/* --------------------------- table primitives --------------------------- */
+
+type CellTone = "ink" | "soft" | "faint" | "mute";
+
+const CELL_TONE: Record<CellTone, string> = {
+  ink: "text-ink",
+  soft: "text-ink-soft",
+  faint: "text-ink-faint",
+  mute: "text-ink-mute",
+};
+
+function Cell({
+  children,
+  mono,
+  size = 12,
+  tone = "soft",
+  align = "start",
+  truncate = true,
+  title,
+  className,
+  style,
+}: {
+  children: ReactNode;
+  mono?: boolean;
+  /** font-size in px */
+  size?: number;
+  tone?: CellTone;
+  align?: "start" | "end";
+  truncate?: boolean;
+  title?: string;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <div
+      title={title}
+      style={{ fontSize: size, ...style }}
+      className={cx(
+        "min-w-0 leading-tight",
+        CELL_TONE[tone],
+        mono && "font-mono",
+        align === "end" && "text-right",
+        truncate && "truncate",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Container for a row inside a Card-like table. The grid template comes from the
+ * caller (e.g. `grid-cols-ticket`) so Tailwind can statically detect the class.
+ */
+function DataRow({
+  cols,
+  height = 32,
+  paddingX = 14,
+  gap = 10,
+  selected,
+  className,
+  onClick,
+  children,
+}: {
+  /** Tailwind class for grid template columns (e.g. "grid-cols-ticket"). */
+  cols: string;
+  height?: number;
+  paddingX?: number;
+  gap?: number;
+  selected?: boolean;
+  className?: string;
+  onClick?: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      onClick={onClick}
+      className={cx(
+        "grid items-center border-b border-line-soft last:border-b-0",
+        cols,
+        onClick && "cursor-pointer hover:bg-surface-row-hover",
+        selected && "bg-surface-row-selected shadow-[inset_2px_0_0_var(--color-accent)]",
+        className,
+      )}
+      style={{ height, paddingLeft: paddingX, paddingRight: paddingX, columnGap: gap }}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -266,7 +359,13 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (isTauri()) refresh().catch((caught) => setError(String(caught)));
+    if (isTauri()) {
+      refresh().catch((caught) => setError(String(caught)));
+      return;
+    }
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1") {
+      setWorkspace(buildDemoWorkspace());
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -343,7 +442,7 @@ export default function App() {
   return (
     <div className="w-screen h-screen bg-surface grid grid-rows-[36px_1fr] overflow-hidden">
       <Titlebar workspace={workspace} project={selectedProject} rootPath={rootPath} />
-      <div className="grid grid-cols-shell h-full min-h-0">
+      <div className="grid grid-cols-shell xl:grid-cols-shell-wide h-full min-h-0 min-w-0 overflow-hidden">
         <Sidebar
           workspace={workspace}
           rootPath={rootPath}
@@ -355,7 +454,7 @@ export default function App() {
           onRefresh={() => refresh()}
           onSeed={handleSeed}
         />
-        <main className="bg-surface flex flex-col min-w-0 min-h-0">
+        <main className="bg-surface flex flex-col min-w-0 min-h-0 overflow-hidden">
           <MainHeader
             project={selectedProject}
             workspace={workspace}
@@ -487,22 +586,22 @@ function Titlebar({
   rootPath: string;
 }) {
   return (
-    <div className="grid grid-cols-shell items-center border-b border-line bg-gradient-to-b from-[oklch(0.235_0.006_250)] to-[oklch(0.205_0.006_250)] select-none h-9 overflow-hidden">
+    <div className="grid grid-cols-shell xl:grid-cols-shell-wide items-center border-b border-line bg-gradient-to-b from-[oklch(0.235_0.006_250)] to-[oklch(0.205_0.006_250)] select-none h-9 overflow-hidden">
       <div className="flex gap-2 pl-3.5">
         <span className="w-3 h-3 rounded-full bg-[oklch(0.66_0.18_25)]" />
         <span className="w-3 h-3 rounded-full bg-[oklch(0.78_0.14_90)]" />
         <span className="w-3 h-3 rounded-full bg-[oklch(0.72_0.13_150)]" />
       </div>
-      <div className="flex items-center justify-center gap-2 font-mono text-[11.5px] text-ink-faint whitespace-nowrap overflow-hidden min-w-0 px-3">
-        <span className="overflow-hidden text-ellipsis min-w-0 text-ink-soft">{rootPath}</span>
-        <span className="text-ink-mute">/</span>
-        <span className="overflow-hidden text-ellipsis text-ink-soft shrink-0">
+      <div className="flex items-center justify-center gap-2 font-mono text-[11.5px] text-ink-faint min-w-0 px-3 overflow-hidden">
+        <span className="truncate min-w-0 text-ink-soft" title={rootPath}>{rootPath}</span>
+        <span className="text-ink-mute shrink-0">/</span>
+        <span className="text-ink-soft shrink-0 truncate">
           {project?.config.name ?? workspace?.config.name ?? "Waymark"}
         </span>
         {project ? (
           <>
-            <span className="text-ink-mute">·</span>
-            <span className="text-ink-mute">{project.config.stage}</span>
+            <span className="text-ink-mute shrink-0">·</span>
+            <span className="text-ink-mute shrink-0">{project.config.stage}</span>
           </>
         ) : null}
       </div>
@@ -589,7 +688,7 @@ function Sidebar({
             onChange={(event) => onRootPathChange(event.target.value)}
             spellCheck={false}
             aria-label="Workspace path"
-            className="flex-1 min-w-0 bg-transparent border-0 outline-0 p-0 font-inherit overflow-hidden text-ellipsis whitespace-nowrap"
+            className="flex-1 min-w-0 bg-transparent border-0 outline-0 p-0 font-inherit truncate"
           />
           <ChevronDown size={12} className="text-ink-mute ml-auto" />
         </div>
@@ -743,15 +842,13 @@ function ProjectRow({
       )}
     >
       <span
-        className="w-4 h-4 rounded-[3px] grid place-items-center text-[9px] font-bold font-mono tracking-[-0.04em] text-[oklch(0.16_0.01_250)]"
+        className="w-4 h-4 rounded-[3px] grid place-items-center text-[9px] font-bold font-mono tracking-[-0.04em] text-[oklch(0.16_0.01_250)] shrink-0"
         style={{ background: projectColor(project.config.slug, index) }}
       >
         {projectMark(project.config.slug)}
       </span>
-      <span className="text-[12.5px] overflow-hidden text-ellipsis whitespace-nowrap">
-        {project.config.name}
-      </span>
-      <span className="flex items-center gap-1">
+      <span className="text-[12.5px] truncate min-w-0">{project.config.name}</span>
+      <span className="flex items-center gap-1 shrink-0">
         <span className={cx("w-[5px] h-[5px] rounded-full", dot)} />
         <span className="font-mono text-[10px] text-ink-mute">{active}</span>
       </span>
@@ -811,22 +908,25 @@ function MainHeader({
 
   return (
     <>
-      <div className="flex items-center gap-3.5 px-[18px] h-[46px] border-b border-line shrink-0">
-        <h1 className="m-0 text-[14px] font-semibold tracking-[-0.005em] text-ink flex items-center gap-2.5 whitespace-nowrap shrink-0">
-          <span style={{ color: project ? projectColor(project.config.slug, 0) : "var(--color-accent)" }}>
+      <div className="flex items-center gap-3.5 px-[18px] h-[46px] border-b border-line shrink-0 min-w-0 overflow-hidden">
+        <h1 className="m-0 text-[14px] font-semibold tracking-[-0.005em] text-ink flex items-center gap-2.5 shrink-0 min-w-0 max-w-[40%]">
+          <span
+            className="shrink-0"
+            style={{ color: project ? projectColor(project.config.slug, 0) : "var(--color-accent)" }}
+          >
             <Triangle size={13} fill="currentColor" strokeWidth={0} />
           </span>
-          <span className="shrink-0 whitespace-nowrap">
+          <span className="truncate">
             {project?.config.name ?? workspace?.config.name ?? "No project"}
           </span>
           <span className="font-mono text-[10.5px] text-ink-faint font-normal px-1.5 py-0.5 border border-line rounded-[3px] bg-surface-2 shrink-0">
             {project?.config.stage ?? "—"}
           </span>
         </h1>
-        <div className="text-[11.5px] text-ink-faint flex-1 min-w-[80px] overflow-hidden text-ellipsis whitespace-nowrap">
+        <div className="text-[11.5px] text-ink-faint flex-1 min-w-0 truncate">
           Focus: <b className="text-ink-soft font-medium">{project?.config.current_focus || project?.config.summary || "—"}</b>
         </div>
-        <div className="flex h-full items-center ml-auto">
+        <nav className="flex h-full items-center ml-auto shrink-0 min-w-0 overflow-x-auto scrollbar-none">
           <Tab id="overview" active={tab === "overview"} onClick={onTab}>Overview</Tab>
           <Tab id="tickets" active={tab === "tickets"} onClick={onTab}>
             Tickets <TabBadge>{counts.tickets}</TabBadge>
@@ -838,7 +938,7 @@ function MainHeader({
             Threads <TabBadge>{counts.threads}</TabBadge>
           </Tab>
           <Tab id="files" active={tab === "files"} onClick={onTab}>Files</Tab>
-        </div>
+        </nav>
       </div>
 
       <div className="flex items-center gap-2 px-[18px] py-2.5 border-b border-line shrink-0">
@@ -923,25 +1023,33 @@ function Stats({ project }: { project: WaymarkProject }) {
   ];
 
   return (
-    <div className="grid grid-cols-stats border border-line rounded-[5px] bg-surface-2 mb-[18px]">
-      {cells.map((cell, index) => (
-        <div
-          key={cell.key}
-          className={cx(
-            "px-3.5 py-2.5 flex flex-col gap-1 min-w-0",
-            index < cells.length - 1 && "border-r border-line-soft",
-          )}
-        >
-          <div className="text-[10px] uppercase tracking-[0.09em] text-ink-mute font-medium flex items-center gap-1.5">
-            <Pin kind={cell.pin} />
-            {cell.label}
+    <div className="@container">
+      <div className="grid grid-cols-3 @3xl:grid-cols-6 border border-line rounded-[5px] bg-surface-2 mb-[18px] overflow-hidden">
+        {cells.map((cell, index) => {
+          const col3 = index % 3;
+          const col6 = index;
+          return (
+            <div
+              key={cell.key}
+              className={cx(
+                "px-3 py-2.5 flex flex-col gap-1 min-w-0 border-line-soft",
+                col3 < 2 && "border-r @3xl:border-r-0",
+                col6 < 5 && "@3xl:border-r",
+                index < 3 && "border-b @3xl:border-b-0",
+              )}
+            >
+            <div className="text-[10px] uppercase tracking-[0.09em] text-ink-mute font-medium flex items-center gap-1.5 min-w-0">
+              <Pin kind={cell.pin} />
+              <span className="truncate">{cell.label}</span>
+            </div>
+            <div className={cx("font-mono text-[22px] font-medium tracking-[-0.02em] leading-none", cell.numClass ?? "text-ink")}>
+              {cell.n}
+            </div>
+            <div className="text-[10.5px] font-mono text-ink-faint truncate">{cell.sub}</div>
           </div>
-          <div className={cx("font-mono text-[22px] font-medium tracking-[-0.02em] leading-none", cell.numClass ?? "text-ink")}>
-            {cell.n}
-          </div>
-          <div className="text-[10.5px] font-mono text-ink-faint">{cell.sub}</div>
-        </div>
-      ))}
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1048,13 +1156,14 @@ function TicketRow({
 }) {
   const warnings = ticketWarnings(project, ticket);
   return (
-    <div
+    <DataRow
+      cols="grid-cols-ticket-narrow xl:grid-cols-ticket"
+      height={32}
+      paddingX={14}
+      gap={10}
       onClick={onClick}
-      className={cx(
-        "grid grid-cols-ticket items-center gap-2.5 px-3.5 h-8 border-b border-line-soft last:border-b-0 cursor-pointer hover:bg-surface-row-hover",
-        selected && "bg-surface-row-selected shadow-[inset_2px_0_0_var(--color-accent)]",
-        multiSel && !selected && "bg-[oklch(0.78_0.135_75_/_0.06)]",
-      )}
+      selected={selected}
+      className={cx(multiSel && !selected && "bg-[oklch(0.78_0.135_75_/_0.06)]")}
     >
       <div
         className="grid place-items-center"
@@ -1072,18 +1181,20 @@ function TicketRow({
           {multiSel ? <Check size={9} /> : null}
         </span>
       </div>
-      <div className="font-mono text-[11px] text-ink-faint overflow-hidden text-ellipsis whitespace-nowrap">
-        {ticket.id}
-      </div>
-      <div className="text-[12.5px] text-ink flex items-center gap-2 min-w-0">
-        <span className="overflow-hidden text-ellipsis whitespace-nowrap">{ticket.title}</span>
+      <Cell mono size={11} tone="faint">{ticket.id}</Cell>
+      <div className="flex items-center gap-2 min-w-0 text-ink">
+        <span className="flex-1 truncate text-[12.5px] min-w-0">{ticket.title}</span>
         {warnings.length > 0 ? (
-          <span className="inline-flex items-center gap-1 text-[10.5px] text-warn bg-[oklch(0.82_0.14_90_/_0.12)] px-1.5 py-px rounded-[3px] whitespace-nowrap">
-            <AlertTriangle size={11} /> {warnings[0]}
+          <span
+            title={warnings[0]}
+            className="inline-flex items-center gap-1 shrink-0 text-[10.5px] text-warn bg-[oklch(0.82_0.14_90_/_0.12)] px-1.5 py-px rounded-[3px]"
+          >
+            <AlertTriangle size={11} className="shrink-0" />
+            <span className="hidden 2xl:inline truncate max-w-[140px]">{warnings[0]}</span>
           </span>
         ) : null}
       </div>
-      <div className="flex gap-1 items-center">
+      <div className="flex gap-1 items-center shrink-0">
         {ticketHasFlag(ticket, "thread") ? (
           <Flag title="Has linked thread"><MessageSquareText size={11} /></Flag>
         ) : null}
@@ -1096,13 +1207,11 @@ function TicketRow({
           <Flag title="Linked decision"><Link2 size={10} /></Flag>
         ) : null}
       </div>
-      <div className="font-mono text-[10.5px] text-ink-faint overflow-hidden text-ellipsis whitespace-nowrap">
+      <Cell mono size={10.5} tone="faint" title={projectFile(project, ticket)} className="hidden xl:block">
         {projectFile(project, ticket)}
-      </div>
-      <div className="font-mono text-[10.5px] text-ink-mute text-right">
-        {ticket.priority ?? "med"}
-      </div>
-    </div>
+      </Cell>
+      <Cell mono size={10.5} tone="mute" align="end">{ticket.priority ?? "med"}</Cell>
+    </DataRow>
   );
 }
 
@@ -1134,20 +1243,30 @@ function Decisions({ decisions }: { decisions: NoteRecord[] }) {
       </SectionHead>
       <Card>
         {decisions.slice(0, 8).map((decision) => (
-          <div
+          <DataRow
             key={decision.path}
-            className="grid grid-cols-decision items-center gap-3 px-3.5 h-[30px] border-b border-line-soft last:border-b-0 text-[12px] hover:bg-surface-row-hover"
+            cols="grid-cols-decision-narrow xl:grid-cols-decision"
+            height={30}
+            paddingX={14}
+            gap={12}
           >
-            <div className="font-mono text-[11px] text-ink-faint overflow-hidden text-ellipsis whitespace-nowrap">{decision.id}</div>
-            <div className="text-ink overflow-hidden text-ellipsis whitespace-nowrap">{decision.title}</div>
-            <div className="font-mono text-[10px] text-ink-faint bg-surface-row-selected border border-line px-1.5 py-px rounded-[3px] justify-self-start">
+            <Cell mono size={11} tone="faint">{decision.id}</Cell>
+            <Cell tone="ink">{decision.title}</Cell>
+            <div className="justify-self-start min-w-0 max-w-full font-mono text-[10px] text-ink-faint bg-surface-row-selected border border-line px-1.5 py-px rounded-[3px] truncate">
               {decision.status ?? "decision"}
             </div>
-            <div className="font-mono text-[10.5px] text-ink-mute">{decision.date ?? "—"}</div>
-            <div className="font-mono text-[10.5px] text-ink-mute overflow-hidden text-ellipsis whitespace-nowrap text-right">
+            <Cell mono size={10.5} tone="mute">{decision.date ?? "—"}</Cell>
+            <Cell
+              mono
+              size={10.5}
+              tone="mute"
+              align="end"
+              title={decision.path}
+              className="hidden xl:block"
+            >
               {decision.path.split("/").slice(-2).join("/")}
-            </div>
-          </div>
+            </Cell>
+          </DataRow>
         ))}
       </Card>
     </div>
@@ -1165,8 +1284,8 @@ function IdeasAndActivity({
 }) {
   const activity = useMemo(() => buildActivity(workspace, project), [workspace, project]);
   return (
-    <div className="grid grid-cols-2 gap-[22px] mb-[22px]">
-      <div>
+    <div className="grid grid-cols-1 xl:grid-cols-2 gap-[22px] mb-[22px]">
+      <div className="min-w-0">
         <SectionHead>
           Ideas <span className="hidden font-mono text-[10px] text-ink-mute font-normal normal-case tracking-normal">{project.ideas.length} captured</span>
         </SectionHead>
@@ -1175,36 +1294,34 @@ function IdeasAndActivity({
             <EmptyRow>No ideas captured.</EmptyRow>
           ) : (
             project.ideas.slice(0, 8).map((idea) => (
-              <div
-                key={idea.path}
-                className="grid grid-cols-idea gap-2.5 items-center px-3 h-7 border-b border-line-soft last:border-b-0 hover:bg-surface-row-hover"
-              >
-                <span className="font-mono text-[10.5px] text-ink-mute overflow-hidden text-ellipsis whitespace-nowrap">
-                  {idea.id}
-                </span>
-                <span className="text-[12px] text-ink-soft overflow-hidden text-ellipsis whitespace-nowrap">{idea.title}</span>
-                <span className="font-mono text-[10px] text-ink-mute text-right">{idea.date ?? "—"}</span>
-              </div>
+              <DataRow key={idea.path} cols="grid-cols-idea" height={28} paddingX={12} gap={10}>
+                <Cell mono size={10.5} tone="mute">{idea.id}</Cell>
+                <Cell size={12} tone="soft">{idea.title}</Cell>
+                <Cell mono size={10} tone="mute" align="end">{idea.date ?? "—"}</Cell>
+              </DataRow>
             ))
           )}
         </Card>
       </div>
-      <div>
+      <div className="min-w-0">
         <SectionHead>Activity</SectionHead>
         <Card>
           {activity.length === 0 ? (
             <EmptyRow>Nothing recent.</EmptyRow>
           ) : (
             activity.map((row, index) => (
-              <div
+              <DataRow
                 key={`${row.kind}-${index}`}
-                className="grid grid-cols-activity gap-2.5 items-center px-3 h-[26px] border-b border-line-soft last:border-b-0"
+                cols="grid-cols-activity"
+                height={26}
+                paddingX={12}
+                gap={10}
               >
-                <span className="font-mono text-[10px] text-ink-mute">{row.t}</span>
-                <span className="inline-flex items-center"><Pin kind={row.kind} /></span>
-                <span className="font-mono text-[10px] text-ink-faint">{row.proj}</span>
-                <span className="text-[11.5px] text-ink-soft overflow-hidden text-ellipsis whitespace-nowrap">{row.text}</span>
-              </div>
+                <Cell mono size={10} tone="mute">{row.t}</Cell>
+                <span className="inline-flex items-center shrink-0"><Pin kind={row.kind} /></span>
+                <Cell mono size={10} tone="faint">{row.proj}</Cell>
+                <Cell size={11.5} tone="soft">{row.text}</Cell>
+              </DataRow>
             ))
           )}
         </Card>
@@ -1237,8 +1354,8 @@ function Inspector({
   const bundleSize = multi.length;
 
   return (
-    <aside className="bg-surface-rail-2 border-l border-line flex flex-col min-h-0">
-      <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-line shrink-0">
+    <aside className="bg-surface-rail-2 border-l border-line flex flex-col min-h-0 min-w-0 overflow-hidden">
+      <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-line shrink-0 min-w-0 overflow-x-auto scrollbar-none">
         <InspectorTab active={mode === "ticket"} onClick={() => onMode("ticket")} icon={FileText}>
           Ticket
         </InspectorTab>
@@ -1251,8 +1368,8 @@ function Inspector({
         <InspectorTab active={mode === "thread"} onClick={() => onMode("thread")} icon={MessageSquareText}>
           Thread
         </InspectorTab>
-        <div className="flex-1" />
-        <button className="w-6 h-6 grid place-items-center rounded-[3px] text-ink-faint hover:bg-surface-3 hover:text-ink" title="Open in editor">
+        <div className="flex-1 min-w-0" />
+        <button className="w-6 h-6 shrink-0 grid place-items-center rounded-[3px] text-ink-faint hover:bg-surface-3 hover:text-ink" title="Open in editor">
           <Link2 size={12} />
         </button>
       </div>
@@ -1393,9 +1510,9 @@ function InspectorTicket({
           }
           title={ticket.title}
           meta={
-            <div className="flex items-center gap-1.5 font-mono text-[11px] text-ink-faint">
-              <FileText size={11} />
-              <span className="overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0">{file}</span>
+            <div className="flex items-center gap-1.5 font-mono text-[11px] text-ink-faint min-w-0">
+              <FileText size={11} className="shrink-0" />
+              <span className="truncate flex-1 min-w-0" title={file}>{file}</span>
               <button
                 className="inline-flex items-center gap-1 px-1 py-0.5 text-ink-faint rounded-[3px] text-[11px] hover:bg-surface-3 hover:text-ink cursor-pointer"
                 onClick={() => navigator.clipboard?.writeText(file).catch(() => undefined)}
@@ -1518,12 +1635,12 @@ function LinkRow({
   trailing?: ReactNode;
 }) {
   return (
-    <div className="grid grid-cols-link gap-2 items-center px-2.5 h-7 border-b border-line-soft last:border-b-0 text-[12px]">
-      <span className="font-mono text-[9.5px] uppercase tracking-[0.07em] text-ink-mute">{kind}</span>
-      <span className="font-mono text-[11px] text-ink-faint overflow-hidden text-ellipsis whitespace-nowrap">{identifier}</span>
-      <span className="text-ink-soft overflow-hidden text-ellipsis whitespace-nowrap">{title}</span>
-      {trailing ?? <span />}
-    </div>
+    <DataRow cols="grid-cols-link" height={28} paddingX={10} gap={8}>
+      <Cell mono size={9.5} tone="mute" className="uppercase tracking-[0.07em]">{kind}</Cell>
+      <Cell mono size={11} tone="faint">{identifier}</Cell>
+      <Cell tone="soft" title={title}>{title}</Cell>
+      <div className="shrink-0">{trailing ?? null}</div>
+    </DataRow>
   );
 }
 
@@ -1591,22 +1708,15 @@ function InspectorPrompt({
         <InspectorSection label="Order">
           <Card>
             {tickets.map((entry, index) => (
-              <div
-                key={entry.id}
-                className="grid grid-cols-order gap-2 items-center px-2.5 h-[30px] border-b border-line-soft last:border-b-0"
-              >
-                <span className="font-mono text-[10.5px] text-ink-mute">{index + 1}</span>
-                <StatusChip status={entry.status} />
-                <span className="font-mono text-[11px] text-ink-faint overflow-hidden text-ellipsis whitespace-nowrap">
-                  {entry.id}
-                </span>
-                <span className="text-[12px] text-ink-soft overflow-hidden text-ellipsis whitespace-nowrap">
-                  {entry.title}
-                </span>
-                <button className="text-ink-mute hover:text-ink cursor-pointer">
+              <DataRow key={entry.id} cols="grid-cols-order" height={30} paddingX={10} gap={8}>
+                <Cell mono size={10.5} tone="mute">{index + 1}</Cell>
+                <div className="shrink-0"><StatusChip status={entry.status} /></div>
+                <Cell mono size={11} tone="faint">{entry.id}</Cell>
+                <Cell size={12} tone="soft">{entry.title}</Cell>
+                <button className="text-ink-mute hover:text-ink cursor-pointer shrink-0">
                   <ChevronDown size={12} />
                 </button>
-              </div>
+              </DataRow>
             ))}
           </Card>
         </InspectorSection>
