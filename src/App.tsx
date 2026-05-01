@@ -1,840 +1,1806 @@
 import {
   AlertTriangle,
-  ArrowUpRight,
-  BookOpen,
-  CheckCircle2,
-  Clipboard,
+  ArrowRight,
+  Check,
+  ChevronDown,
+  Copy,
   FileText,
-  FolderOpen,
   GitBranch,
+  Inbox,
+  LayoutGrid,
   Lightbulb,
-  Link as LinkIcon,
+  Link2,
+  ListChecks,
+  ListOrdered,
   MessageSquareText,
   Plus,
   RefreshCw,
+  Search,
+  Settings,
+  Sliders,
   Sparkles,
-  Target,
+  Triangle,
+  type LucideIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type ButtonHTMLAttributes,
+  type ReactNode,
+} from "react";
 import { isTauri, openPath } from "./tauri";
-import type { ThreadRecord, Ticket, TicketStatus, WaymarkProject, WorkspaceData } from "./types";
+import type {
+  NoteRecord,
+  ThreadRecord,
+  Ticket,
+  TicketStatus,
+  WaymarkProject,
+  WorkspaceData,
+} from "./types";
 import {
   buildPrompt,
-  createNote,
   createSampleWorkspace,
   loadWorkspace,
   saveGeneratedPrompt,
-  saveThreads,
   saveTickets,
   ticketWarnings,
 } from "./workspace";
 
-type View = "dashboard" | "overview" | "tickets" | "notes" | "threads" | "handoff";
+/* ----------------------------- domain types ----------------------------- */
 
-const ticketStatuses: TicketStatus[] = ["idea", "now", "next", "later", "blocked", "done"];
-const defaultWorkspacePath = "/Users/hirokifuruichi/code/waymark/sample-workspace";
+type NavId = "home" | "queue" | "decisions" | "threads" | "ideas" | "inbox";
+type MainTab = "overview" | "tickets" | "decisions" | "threads" | "files";
+type InspectorMode = "ticket" | "prompt" | "thread";
+type Lane = "now" | "next" | "later" | "blocked" | "done";
 
-const statusLabel: Record<TicketStatus, string> = {
-  idea: "Ideas",
+const LANES_IN_QUEUE: Lane[] = ["now", "next", "blocked", "later"];
+const LANE_LABEL: Record<Lane, string> = {
   now: "Now",
   next: "Next",
   later: "Later",
   blocked: "Blocked",
   done: "Done",
 };
+const PROJECT_PALETTE = [
+  "oklch(0.78 0.135 75)",
+  "oklch(0.74 0.13 150)",
+  "oklch(0.74 0.11 235)",
+  "oklch(0.74 0.12 295)",
+  "oklch(0.62 0.005 250)",
+];
+const defaultWorkspacePath = "/Users/hirokifuruichi/code/waymark/sample-workspace";
 
-function blankTicket(): Ticket {
-  return {
-    id: "",
-    title: "",
-    status: "now",
-    priority: "medium",
-    summary: "",
-    acceptance_criteria: [],
-    linked_files: [],
-    linked_decisions: [],
-    linked_threads: [],
-    generated_prompts: [],
+/* -------------------------------- utils --------------------------------- */
+
+function projectColor(slug: string, index: number) {
+  if (slug.toLowerCase().startsWith("waymark")) return PROJECT_PALETTE[0];
+  return PROJECT_PALETTE[index % PROJECT_PALETTE.length];
+}
+function projectMark(slug: string) {
+  return slug.replace(/[^a-z0-9]/gi, "").slice(0, 2).toUpperCase();
+}
+function projectStatusKind(project: WaymarkProject): "warn" | "ok" | "idle" {
+  if (project.config.status === "paused" || project.config.status === "archived") return "idle";
+  if (project.warnings.length > 0) return "warn";
+  return "ok";
+}
+function activeLane(status: TicketStatus): Lane | null {
+  if (status === "idea") return null;
+  return status as Lane;
+}
+function projectFile(project: WaymarkProject, ticket: Ticket) {
+  if (ticket.linked_files?.length) return ticket.linked_files[0];
+  return `${project.config.slug}/tickets/${ticket.id}.yaml`;
+}
+function ticketHasFlag(ticket: Ticket, kind: "ac" | "decision" | "thread") {
+  if (kind === "ac") return (ticket.acceptance_criteria?.length ?? 0) > 0;
+  if (kind === "decision") return (ticket.linked_decisions?.length ?? 0) > 0;
+  return (ticket.linked_threads?.length ?? 0) > 0;
+}
+function tokenEstimate(prompt: string) {
+  return Math.max(120, Math.round(prompt.length / 4));
+}
+
+type Activity = { t: string; kind: string; proj: string; text: string };
+
+function buildActivity(workspace: WorkspaceData, project: WaymarkProject | null): Activity[] {
+  const rows: Activity[] = [];
+  const slug = project?.config.slug ?? "";
+  for (const decision of project?.decisions.slice(0, 2) ?? []) {
+    rows.push({ t: decision.date ?? "—", kind: "decision", proj: projectMark(slug), text: decision.title });
+  }
+  for (const thread of (project?.threads ?? []).slice(0, 2)) {
+    rows.push({ t: thread.status, kind: "thread", proj: projectMark(slug), text: thread.title });
+  }
+  for (const ticket of (project?.tickets ?? []).slice(0, 3)) {
+    rows.push({ t: ticket.status, kind: ticket.status, proj: projectMark(slug), text: ticket.title });
+  }
+  if (rows.length === 0) {
+    for (const proj of workspace.projects.slice(0, 4)) {
+      rows.push({
+        t: proj.config.stage,
+        kind: "ticket",
+        proj: projectMark(proj.config.slug),
+        text: proj.config.current_focus || proj.config.summary,
+      });
+    }
+  }
+  return rows.slice(0, 6);
+}
+
+/* --------------------------- shared primitives -------------------------- */
+
+function cx(...parts: Array<string | false | null | undefined>) {
+  return parts.filter(Boolean).join(" ");
+}
+
+function Pin({ kind, className }: { kind: string; className?: string }) {
+  return <span className={cx("lane-pin", kind, className)} />;
+}
+
+function StatusChip({ status }: { status: TicketStatus }) {
+  const label = status === "idea" ? "IDEA" : status.toUpperCase();
+  return <span className={cx("status-chip", status)}>{label}</span>;
+}
+
+function Btn({
+  variant = "default",
+  className,
+  children,
+  ...rest
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "default" | "primary" | "ghost" }) {
+  const base =
+    "h-7 px-2.5 rounded-[5px] inline-flex items-center gap-1.5 text-[12px] whitespace-nowrap border disabled:opacity-50 disabled:cursor-not-allowed";
+  const variants: Record<string, string> = {
+    default:
+      "border-line bg-surface-2 text-ink-soft hover:bg-surface-4 hover:text-ink",
+    primary:
+      "border-accent-deep bg-accent text-accent-ink font-semibold hover:brightness-110",
+    ghost:
+      "border-transparent bg-transparent text-ink-faint hover:bg-surface-2 hover:text-ink",
   };
+  return (
+    <button {...rest} className={cx(base, variants[variant], className)}>
+      {children}
+    </button>
+  );
 }
 
-function fieldId(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
+function SectionHead({ children, more }: { children: ReactNode; more?: ReactNode }) {
+  return (
+    <div className="flex items-center gap-2.5 mb-2 px-0.5 min-w-0">
+      <h2 className="m-0 text-[11px] uppercase tracking-[0.10em] text-ink-faint font-semibold flex items-center gap-2 whitespace-nowrap shrink-0">
+        {children}
+      </h2>
+      <div className="flex-1 h-px bg-line-soft" />
+      {more}
+    </div>
+  );
 }
 
-function splitLines(value: string) {
-  return value
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
+function Card({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <div className={cx("border border-line rounded-[5px] bg-surface-2 overflow-hidden", className)}>
+      {children}
+    </div>
+  );
 }
 
-function App() {
+function Flag({
+  tone = "default",
+  title,
+  children,
+}: {
+  tone?: "default" | "ok" | "muted";
+  title?: string;
+  children: ReactNode;
+}) {
+  const tones = {
+    default: "bg-surface-row-selected border-line text-ink-faint",
+    ok: "text-lane-done border-[oklch(0.74_0.13_150_/_0.25)] bg-[oklch(0.74_0.13_150_/_0.10)]",
+    muted: "bg-surface-row-selected border-line text-ink-mute",
+  } as const;
+  return (
+    <span
+      title={title}
+      className={cx(
+        "inline-flex items-center gap-0.5 h-4 px-1 rounded-[3px] border font-mono text-[9.5px]",
+        tones[tone],
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+/* --------------------------------- App --------------------------------- */
+
+export default function App() {
   const [rootPath, setRootPath] = useState(defaultWorkspacePath);
   const [workspace, setWorkspace] = useState<WorkspaceData | null>(null);
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
-  const [view, setView] = useState<View>("dashboard");
+  const [nav, setNav] = useState<NavId>("home");
+  const [tab, setTab] = useState<MainTab>("overview");
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [multi, setMulti] = useState<string[]>([]);
+  const [inspectorMode, setInspectorMode] = useState<InspectorMode>("ticket");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [ticketDraft, setTicketDraft] = useState<Ticket>(blankTicket());
-  const [criteriaDraft, setCriteriaDraft] = useState("");
-  const [noteTitle, setNoteTitle] = useState("");
-  const [noteBody, setNoteBody] = useState("");
-  const [noteType, setNoteType] = useState<"idea" | "decision">("idea");
-  const [threadTitle, setThreadTitle] = useState("");
-  const [threadProvider, setThreadProvider] = useState<ThreadRecord["provider"]>("codex");
-  const [threadUrl, setThreadUrl] = useState("");
-  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
-  const [context, setContext] = useState(["repos", "files", "decisions", "threads", "links"]);
+  const [captureOpen, setCaptureOpen] = useState(false);
+  const [search, setSearch] = useState("");
 
-  const selectedProject = useMemo(
-    () => workspace?.projects.find((project) => project.config.slug === selectedSlug) ?? workspace?.projects[0] ?? null,
-    [selectedSlug, workspace],
-  );
+  const selectedProject = useMemo(() => {
+    if (!workspace) return null;
+    return (
+      workspace.projects.find((project) => project.config.slug === selectedSlug) ??
+      workspace.projects[0] ??
+      null
+    );
+  }, [selectedSlug, workspace]);
 
-  const selectedTicket = useMemo(
-    () => selectedProject?.tickets.find((ticket) => ticket.id === selectedTicketId) ?? selectedProject?.tickets[0] ?? null,
-    [selectedProject, selectedTicketId],
-  );
+  const selectedTicket = useMemo(() => {
+    if (!selectedProject) return null;
+    return selectedProject.tickets.find((ticket) => ticket.id === selectedTicketId) ?? null;
+  }, [selectedProject, selectedTicketId]);
 
   async function refresh(path = rootPath) {
     setError(null);
-    setNotice(null);
     try {
-      const nextWorkspace = await loadWorkspace(path);
-      setWorkspace(nextWorkspace);
-      setSelectedSlug((current) => current ?? nextWorkspace.projects[0]?.config.slug ?? null);
-      setSelectedTicketId((current) => current ?? nextWorkspace.projects[0]?.tickets[0]?.id ?? null);
+      const next = await loadWorkspace(path);
+      setWorkspace(next);
+      setSelectedSlug((current) => current ?? next.projects[0]?.config.slug ?? null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
   }
 
-  async function handleCreateSample() {
+  async function handleSeed() {
     if (!isTauri()) {
-      setError("Run Waymark through Tauri to create local workspace files.");
+      setError("Run Waymark through Tauri to seed a local workspace.");
       return;
     }
-
     await createSampleWorkspace(rootPath);
     setNotice(`Created sample workspace at ${rootPath}`);
     await refresh(rootPath);
   }
 
-  async function handleAddTicket(project: WaymarkProject) {
-    if (!ticketDraft.title.trim()) return;
-    const ticket: Ticket = {
-      ...ticketDraft,
-      id: ticketDraft.id || fieldId(ticketDraft.title),
-      acceptance_criteria: splitLines(criteriaDraft),
-      linked_files: ticketDraft.linked_files ?? [],
-      linked_decisions: ticketDraft.linked_decisions ?? [],
-      linked_threads: ticketDraft.linked_threads ?? [],
-      generated_prompts: [],
-    };
-    await saveTickets(project, [...project.tickets, ticket]);
-    setTicketDraft(blankTicket());
-    setCriteriaDraft("");
-    setNotice(`Created ticket "${ticket.title}"`);
-    await refresh();
-  }
-
-  async function handleTicketStatus(project: WaymarkProject, ticket: Ticket, status: TicketStatus) {
-    await saveTickets(
-      project,
-      project.tickets.map((candidate) => (candidate.id === ticket.id ? { ...candidate, status } : candidate)),
-    );
-    await refresh();
-  }
-
-  async function handleAddNote(project: WaymarkProject) {
-    if (!noteTitle.trim() || !noteBody.trim()) return;
-    await createNote(project, noteType, noteTitle, noteBody, []);
-    setNotice(`Created ${noteType} "${noteTitle}"`);
-    setNoteTitle("");
-    setNoteBody("");
-    await refresh();
-  }
-
-  async function handleAddThread(project: WaymarkProject) {
-    if (!threadTitle.trim()) return;
-    const id = fieldId(threadTitle);
-    const thread: ThreadRecord = {
-      id,
-      title: threadTitle,
-      provider: threadProvider,
-      status: "active",
-      url: threadUrl.trim() || null,
-      summary_file: `ai/thread-summaries/${id}.md`,
-      linked_tickets: selectedTicket ? [selectedTicket.id] : [],
-    };
-    await saveThreads(project, [...project.threads, thread]);
-    setThreadTitle("");
-    setThreadUrl("");
-    setNotice(`Created thread reference "${thread.title}"`);
-    await refresh();
-  }
-
-  async function handleGeneratePrompt(project: WaymarkProject, ticket: Ticket) {
-    const prompt = buildPrompt(project, ticket, context);
-    const promptPath = await saveGeneratedPrompt(project, ticket, prompt);
-    await navigator.clipboard.writeText(prompt);
-    setNotice(`Saved ${promptPath} and copied the prompt to clipboard.`);
-    await refresh();
-  }
-
   useEffect(() => {
-    if (isTauri()) {
-      refresh().catch((caught) => setError(String(caught)));
-    }
+    if (isTauri()) refresh().catch((caught) => setError(String(caught)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return (
-    <main className="app-shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="mark">W</div>
-          <div>
-            <h1>Waymark</h1>
-            <p>Local project cockpit</p>
-          </div>
-        </div>
+  useEffect(() => {
+    if (!selectedProject) {
+      setSelectedTicketId(null);
+      setMulti([]);
+      return;
+    }
+    setMulti((current) =>
+      current.filter((id) => selectedProject.tickets.some((ticket) => ticket.id === id)),
+    );
+    setSelectedTicketId((current) => {
+      if (current && selectedProject.tickets.some((ticket) => ticket.id === current)) return current;
+      return selectedProject.tickets[0]?.id ?? null;
+    });
+  }, [selectedProject]);
 
-        <div className="workspace-picker">
-          <label htmlFor="workspace-path">Workspace</label>
-          <input id="workspace-path" value={rootPath} onChange={(event) => setRootPath(event.target.value)} />
-          <div className="row-actions">
-            <button type="button" onClick={() => refresh()} className="button primary">
-              <FolderOpen size={15} />
-              Open
-            </button>
-            <button type="button" onClick={handleCreateSample} className="button">
-              <Sparkles size={15} />
-              Seed
-            </button>
-          </div>
-        </div>
+  useEffect(() => {
+    if (!notice) return;
+    const id = window.setTimeout(() => setNotice(null), 4500);
+    return () => window.clearTimeout(id);
+  }, [notice]);
 
-        <nav className="main-nav">
-          <button className={view === "dashboard" ? "active" : ""} onClick={() => setView("dashboard")}>
-            <Target size={15} />
-            Dashboard
-          </button>
-          <button className={view === "overview" ? "active" : ""} onClick={() => setView("overview")}>
-            <BookOpen size={15} />
-            Overview
-          </button>
-          <button className={view === "tickets" ? "active" : ""} onClick={() => setView("tickets")}>
-            <Clipboard size={15} />
-            Tickets
-          </button>
-          <button className={view === "notes" ? "active" : ""} onClick={() => setView("notes")}>
-            <Lightbulb size={15} />
-            Ideas & Decisions
-          </button>
-          <button className={view === "threads" ? "active" : ""} onClick={() => setView("threads")}>
-            <MessageSquareText size={15} />
-            Threads
-          </button>
-          <button className={view === "handoff" ? "active" : ""} onClick={() => setView("handoff")}>
-            <Sparkles size={15} />
-            Handoff
-          </button>
-        </nav>
+  function toggleMulti(id: string) {
+    setMulti((current) =>
+      current.includes(id) ? current.filter((value) => value !== id) : [...current, id],
+    );
+  }
 
-        <div className="project-list">
-          <div className="section-label">Projects</div>
-          {workspace?.projects.map((project) => (
-            <button
-              key={project.config.slug}
-              className={`project-chip ${project.config.slug === selectedProject?.config.slug ? "selected" : ""}`}
-              onClick={() => {
-                setSelectedSlug(project.config.slug);
-                setSelectedTicketId(project.tickets[0]?.id ?? null);
-                if (view === "dashboard") setView("overview");
-              }}
-            >
-              <span>{project.config.name}</span>
-              <small>{project.config.stage}</small>
-            </button>
-          ))}
-        </div>
-      </aside>
+  async function handleHandoff() {
+    if (!selectedProject) return;
+    const project = selectedProject;
+    const ids = multi.length ? multi : selectedTicket ? [selectedTicket.id] : [];
+    const tickets = project.tickets.filter((ticket) => ids.includes(ticket.id));
+    if (tickets.length === 0) {
+      setError("Select a ticket to send to an agent.");
+      return;
+    }
+    setInspectorMode("prompt");
+    try {
+      const saved: string[] = [];
+      for (const ticket of tickets) {
+        const prompt = buildPrompt(project, ticket, ["repos", "files", "decisions", "threads", "links"]);
+        saved.push(await saveGeneratedPrompt(project, ticket, prompt));
+      }
+      const promptForCopy = tickets
+        .map((ticket) => buildPrompt(project, ticket, ["repos", "files", "decisions", "threads", "links"]))
+        .join("\n\n---\n\n");
+      try {
+        await navigator.clipboard.writeText(promptForCopy);
+      } catch {
+        /* clipboard not always available */
+      }
+      setNotice(`Saved ${saved.length} prompt${saved.length === 1 ? "" : "s"} and copied to clipboard.`);
+      await refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }
 
-      <section className="content">
-        <header className="topbar">
-          <div>
-            <p className="eyeline">{workspace?.config.name ?? "No workspace loaded"}</p>
-            <h2>{viewTitle(view, selectedProject)}</h2>
-          </div>
-          <button className="button" onClick={() => refresh()}>
-            <RefreshCw size={15} />
-            Refresh
-          </button>
-        </header>
-
-        {notice ? <div className="notice success">{notice}</div> : null}
-        {error ? <div className="notice error">{error}</div> : null}
-        {!isTauri() ? (
-          <div className="notice warning">Run with `pnpm tauri dev` for local filesystem features.</div>
-        ) : null}
-
-        {!workspace ? (
-          <EmptyState onCreate={handleCreateSample} />
-        ) : view === "dashboard" ? (
-          <Dashboard workspace={workspace} onSelect={(slug) => {
-            setSelectedSlug(slug);
-            setView("overview");
-          }} />
-        ) : selectedProject ? (
-          <>
-            {view === "overview" ? <ProjectOverview project={selectedProject} /> : null}
-            {view === "tickets" ? (
-              <TicketsView
-                project={selectedProject}
-                draft={ticketDraft}
-                criteriaDraft={criteriaDraft}
-                onCriteriaDraft={setCriteriaDraft}
-                onDraft={setTicketDraft}
-                onAddTicket={handleAddTicket}
-                onStatus={handleTicketStatus}
-                onHandoff={(ticket) => {
-                  setSelectedTicketId(ticket.id);
-                  setView("handoff");
-                }}
-              />
-            ) : null}
-            {view === "notes" ? (
-              <NotesView
-                project={selectedProject}
-                noteTitle={noteTitle}
-                noteBody={noteBody}
-                noteType={noteType}
-                onTitle={setNoteTitle}
-                onBody={setNoteBody}
-                onType={setNoteType}
-                onCreate={handleAddNote}
-              />
-            ) : null}
-            {view === "threads" ? (
-              <ThreadsView
-                project={selectedProject}
-                threadTitle={threadTitle}
-                threadProvider={threadProvider}
-                threadUrl={threadUrl}
-                onTitle={setThreadTitle}
-                onProvider={setThreadProvider}
-                onUrl={setThreadUrl}
-                onCreate={handleAddThread}
-              />
-            ) : null}
-            {view === "handoff" && selectedTicket ? (
-              <HandoffView
-                project={selectedProject}
-                ticket={selectedTicket}
-                selectedContext={context}
-                onContext={setContext}
-                onTicket={setSelectedTicketId}
-                onGenerate={handleGeneratePrompt}
-              />
-            ) : null}
-          </>
-        ) : null}
-      </section>
-    </main>
-  );
-}
-
-function viewTitle(view: View, project: WaymarkProject | null) {
-  if (view === "dashboard") return "Workspace Dashboard";
-  if (!project) return "No Project Selected";
-  const labels: Record<View, string> = {
-    dashboard: "Workspace Dashboard",
-    overview: `${project.config.name} Overview`,
-    tickets: `${project.config.name} Tickets`,
-    notes: `${project.config.name} Ideas & Decisions`,
-    threads: `${project.config.name} AI Threads`,
-    handoff: `${project.config.name} Agent Handoff`,
-  };
-  return labels[view];
-}
-
-function EmptyState({ onCreate }: { onCreate: () => void }) {
-  return (
-    <section className="empty-state">
-      <Sparkles size={28} />
-      <h2>Create a sample Waymark workspace</h2>
-      <p>Seed a local file-native workspace to explore the MVP cockpit, tickets, decisions, and handoff flow.</p>
-      <button className="button primary" onClick={onCreate}>
-        <Plus size={15} />
-        Seed Sample Workspace
-      </button>
-    </section>
-  );
-}
-
-function Dashboard({ workspace, onSelect }: { workspace: WorkspaceData; onSelect: (slug: string) => void }) {
-  const activeTickets = workspace.projects.flatMap((project) =>
-    project.tickets
-      .filter((ticket) => ["idea", "now", "next", "blocked"].includes(ticket.status))
-      .map((ticket) => ({ project, ticket })),
-  );
+  async function handleStatusChange(ticket: Ticket, status: TicketStatus) {
+    if (!selectedProject) return;
+    await saveTickets(
+      selectedProject,
+      selectedProject.tickets.map((candidate) =>
+        candidate.id === ticket.id ? { ...candidate, status } : candidate,
+      ),
+    );
+    setNotice(`Moved ${ticket.title} to ${LANE_LABEL[status as Lane] ?? status}.`);
+    await refresh();
+  }
 
   return (
-    <div className="dashboard-grid">
-      <section className="panel span-2">
-        <div className="panel-header">
-          <h3>Projects</h3>
-          <span>{workspace.projects.length}</span>
-        </div>
-        <div className="project-table">
-          {workspace.projects.map((project) => (
-            <button key={project.config.slug} onClick={() => onSelect(project.config.slug)}>
-              <strong>{project.config.name}</strong>
-              <span>{project.config.current_focus || "No current focus"}</span>
-              <small>{project.config.status} · {project.config.stage}</small>
-            </button>
-          ))}
-        </div>
-      </section>
+    <div className="w-screen h-screen bg-surface grid grid-rows-[36px_1fr] overflow-hidden">
+      <Titlebar workspace={workspace} project={selectedProject} rootPath={rootPath} />
+      <div className="grid grid-cols-shell h-full min-h-0">
+        <Sidebar
+          workspace={workspace}
+          rootPath={rootPath}
+          onRootPathChange={setRootPath}
+          selectedSlug={selectedProject?.config.slug ?? null}
+          onSelectProject={setSelectedSlug}
+          nav={nav}
+          onNav={setNav}
+          onRefresh={() => refresh()}
+          onSeed={handleSeed}
+        />
+        <main className="bg-surface flex flex-col min-w-0 min-h-0">
+          <MainHeader
+            project={selectedProject}
+            workspace={workspace}
+            tab={tab}
+            onTab={setTab}
+            handoffDisabled={!selectedProject || (!selectedTicket && multi.length === 0)}
+            search={search}
+            onSearch={setSearch}
+            onCapture={() => setCaptureOpen(true)}
+            onSendHandoff={handleHandoff}
+          />
+          <div className="flex-1 min-h-0 overflow-y-auto px-[18px] pt-3.5 pb-7">
+            {notice ? <Notice tone="ok"><Check size={13} /> {notice}</Notice> : null}
+            {error ? <Notice tone="err"><AlertTriangle size={13} /> {error}</Notice> : null}
+            {!isTauri() ? (
+              <Notice tone="warn">
+                <AlertTriangle size={13} />
+                Run with <code>pnpm tauri dev</code> to load and write the local Markdown/YAML workspace.
+              </Notice>
+            ) : null}
 
-      <section className="panel">
-        <div className="panel-header">
-          <h3>Warnings</h3>
-          <span>{workspace.projects.reduce((count, project) => count + project.warnings.length, 0)}</span>
-        </div>
-        <WarningList warnings={workspace.projects.flatMap((project) => project.warnings.map((warning) => `${project.config.name}: ${warning}`)).slice(0, 8)} />
-      </section>
-
-      <section className="panel span-2">
-        <div className="panel-header">
-          <h3>Active Local Tickets</h3>
-          <span>{activeTickets.length}</span>
-        </div>
-        <div className="rows">
-          {activeTickets.map(({ project, ticket }) => (
-            <div className="data-row" key={`${project.config.slug}-${ticket.id}`}>
-              <div>
-                <strong>{ticket.title}</strong>
-                <span>{project.config.name} · {ticket.status}</span>
+            {!workspace ? (
+              <EmptyState
+                tauri={isTauri()}
+                rootPath={rootPath}
+                onRootPath={setRootPath}
+                onSeed={handleSeed}
+                onRefresh={() => refresh()}
+              />
+            ) : !selectedProject ? (
+              <div className="grid place-items-center gap-3.5 py-16 px-8 text-center text-ink-faint">
+                <Triangle size={28} className="text-accent" />
+                <h2 className="m-0 text-[18px] font-semibold tracking-[-0.01em] text-ink">
+                  No projects in this workspace
+                </h2>
+                <p className="m-0 max-w-[460px] text-[13px] leading-[1.55]">
+                  Add a <code>project.yaml</code> under <code>{workspace.config.projects_dir}/</code> and refresh.
+                </p>
               </div>
-              <small>{ticket.priority ?? "medium"}</small>
-            </div>
-          ))}
-        </div>
-      </section>
+            ) : (
+              <>
+                <Stats project={selectedProject} />
+                <Queue
+                  project={selectedProject}
+                  selectedKey={selectedTicketId}
+                  onSelect={(ticket) => {
+                    setSelectedTicketId(ticket.id);
+                    setInspectorMode("ticket");
+                  }}
+                  multi={multi}
+                  toggleMulti={toggleMulti}
+                  search={search}
+                />
+                <Decisions decisions={selectedProject.decisions} />
+                <IdeasAndActivity project={selectedProject} workspace={workspace} />
+              </>
+            )}
+          </div>
+        </main>
+        <Inspector
+          mode={inspectorMode}
+          onMode={setInspectorMode}
+          project={selectedProject}
+          ticket={selectedTicket}
+          multi={multi}
+          workspace={workspace}
+          onSendHandoff={handleHandoff}
+          onStatus={handleStatusChange}
+        />
+      </div>
 
-      <section className="panel">
-        <div className="panel-header">
-          <h3>Recent Notes</h3>
-          <span>{workspace.projects.reduce((count, project) => count + project.ideas.length + project.decisions.length, 0)}</span>
-        </div>
-        <div className="rows compact">
-          {workspace.projects
-            .flatMap((project) => [...project.ideas, ...project.decisions].map((note) => ({ project, note })))
-            .slice(0, 6)
-            .map(({ project, note }) => (
-              <div className="data-row" key={note.path}>
-                <div>
-                  <strong>{note.title}</strong>
-                  <span>{project.config.name} · {note.type}</span>
-                </div>
-              </div>
-            ))}
-        </div>
-      </section>
+      {captureOpen && selectedProject ? (
+        <CaptureModal
+          project={selectedProject}
+          onClose={() => setCaptureOpen(false)}
+          onCreated={async (title, status, summary) => {
+            const id = title
+              .trim()
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "-")
+              .replace(/(^-|-$)/g, "");
+            const ticket: Ticket = {
+              id: id || `ticket-${Date.now()}`,
+              title,
+              status,
+              priority: "medium",
+              summary,
+              acceptance_criteria: [],
+              linked_files: [],
+              linked_decisions: [],
+              linked_threads: [],
+              generated_prompts: [],
+            };
+            await saveTickets(selectedProject, [...selectedProject.tickets, ticket]);
+            setNotice(`Captured "${title}".`);
+            setCaptureOpen(false);
+            await refresh();
+          }}
+        />
+      ) : null}
     </div>
   );
 }
 
-function ProjectOverview({ project }: { project: WaymarkProject }) {
+/* ------------------------------- notice -------------------------------- */
+
+function Notice({ tone, children }: { tone: "ok" | "warn" | "err"; children: ReactNode }) {
+  const tones = {
+    ok: "text-lane-done border-[oklch(0.74_0.13_150_/_0.3)] bg-[oklch(0.74_0.13_150_/_0.08)]",
+    warn: "text-warn border-[oklch(0.82_0.14_90_/_0.3)] bg-[oklch(0.82_0.14_90_/_0.08)]",
+    err: "text-danger border-[oklch(0.70_0.16_25_/_0.3)] bg-[oklch(0.70_0.16_25_/_0.08)]",
+  };
   return (
-    <div className="stack">
-      <section className="project-hero">
-        <div>
-          <div className="tag-row">
-            <span>{project.config.status}</span>
-            <span>{project.config.stage}</span>
-            {project.config.tags?.map((tag) => <span key={tag}>{tag}</span>)}
-          </div>
-          <h3>{project.config.name}</h3>
-          <p>{project.config.summary}</p>
-        </div>
-        <div className="focus-box">
-          <span>Current focus</span>
-          <strong>{project.config.current_focus || "Not set"}</strong>
-        </div>
-      </section>
+    <div className={cx("text-[12px] px-3 py-2 rounded-[5px] border mb-3 flex items-center gap-2", tones[tone])}>
+      {children}
+    </div>
+  );
+}
 
-      <div className="dashboard-grid">
-        <section className="panel">
-          <div className="panel-header">
-            <h3>Repos</h3>
-            <span>{project.config.repos?.length ?? 0}</span>
-          </div>
-          <div className="rows">
-            {project.config.repos?.map((repo) => (
-              <div className="data-row" key={repo.id}>
-                <div>
-                  <strong>{repo.name}</strong>
-                  <span>{repo.path || repo.url || "No path"}</span>
-                </div>
-                <OpenButtons path={repo.path} url={repo.url} />
-              </div>
-            ))}
-          </div>
-        </section>
+/* ------------------------------- titlebar ------------------------------- */
 
-        <section className="panel">
-          <div className="panel-header">
-            <h3>Links</h3>
-            <span>{Object.keys(project.config.links ?? {}).length + project.links.length}</span>
-          </div>
-          <div className="rows">
-            {Object.entries(project.config.links ?? {}).map(([label, url]) => (
-              <div className="data-row" key={label}>
-                <div>
-                  <strong>{label}</strong>
-                  <span>{url}</span>
-                </div>
-                <OpenButtons url={url} />
-              </div>
-            ))}
-            {project.links.map((link) => (
-              <div className="data-row" key={link.id}>
-                <div>
-                  <strong>{link.label}</strong>
-                  <span>{link.type} · {link.environment ?? "n/a"}</span>
-                </div>
-                <OpenButtons url={link.url} />
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="panel">
-          <div className="panel-header">
-            <h3>Readiness</h3>
-            <span>{project.warnings.length}</span>
-          </div>
-          <WarningList warnings={project.warnings} />
-        </section>
+function Titlebar({
+  workspace,
+  project,
+  rootPath,
+}: {
+  workspace: WorkspaceData | null;
+  project: WaymarkProject | null;
+  rootPath: string;
+}) {
+  return (
+    <div className="grid grid-cols-shell items-center border-b border-line bg-gradient-to-b from-[oklch(0.235_0.006_250)] to-[oklch(0.205_0.006_250)] select-none h-9 overflow-hidden">
+      <div className="flex gap-2 pl-3.5">
+        <span className="w-3 h-3 rounded-full bg-[oklch(0.66_0.18_25)]" />
+        <span className="w-3 h-3 rounded-full bg-[oklch(0.78_0.14_90)]" />
+        <span className="w-3 h-3 rounded-full bg-[oklch(0.72_0.13_150)]" />
+      </div>
+      <div className="flex items-center justify-center gap-2 font-mono text-[11.5px] text-ink-faint whitespace-nowrap overflow-hidden min-w-0 px-3">
+        <span className="overflow-hidden text-ellipsis min-w-0 text-ink-soft">{rootPath}</span>
+        <span className="text-ink-mute">/</span>
+        <span className="overflow-hidden text-ellipsis text-ink-soft shrink-0">
+          {project?.config.name ?? workspace?.config.name ?? "Waymark"}
+        </span>
+        {project ? (
+          <>
+            <span className="text-ink-mute">·</span>
+            <span className="text-ink-mute">{project.config.stage}</span>
+          </>
+        ) : null}
+      </div>
+      <div className="flex items-center justify-end gap-1 pr-2.5 shrink-0 whitespace-nowrap">
+        <TitlebarButton icon={GitBranch}>main</TitlebarButton>
+        <TitlebarButton icon={Settings} aria-label="Settings" />
       </div>
     </div>
   );
 }
 
-function TicketsView({
-  project,
-  draft,
-  criteriaDraft,
-  onCriteriaDraft,
-  onDraft,
-  onAddTicket,
-  onStatus,
-  onHandoff,
-}: {
-  project: WaymarkProject;
-  draft: Ticket;
-  criteriaDraft: string;
-  onCriteriaDraft: (value: string) => void;
-  onDraft: (ticket: Ticket) => void;
-  onAddTicket: (project: WaymarkProject) => void;
-  onStatus: (project: WaymarkProject, ticket: Ticket, status: TicketStatus) => void;
-  onHandoff: (ticket: Ticket) => void;
-}) {
+function TitlebarButton({
+  icon: Icon,
+  children,
+  ...rest
+}: ButtonHTMLAttributes<HTMLButtonElement> & { icon: LucideIcon }) {
   return (
-    <div className="stack">
-      <section className="form-panel">
-        <h3>Create Local Ticket</h3>
-        <div className="form-grid">
-          <input placeholder="Title" value={draft.title} onChange={(event) => onDraft({ ...draft, title: event.target.value, id: fieldId(event.target.value) })} />
-          <select value={draft.status} onChange={(event) => onDraft({ ...draft, status: event.target.value as TicketStatus })}>
-            {ticketStatuses.map((status) => <option key={status} value={status}>{statusLabel[status]}</option>)}
-          </select>
-          <textarea placeholder="Summary" value={draft.summary} onChange={(event) => onDraft({ ...draft, summary: event.target.value })} />
-          <textarea placeholder="Acceptance criteria, one per line" value={criteriaDraft} onChange={(event) => onCriteriaDraft(event.target.value)} />
-        </div>
-        <button className="button primary" onClick={() => onAddTicket(project)}>
-          <Plus size={15} />
-          Create Ticket
-        </button>
-      </section>
-
-      <section className="ticket-board">
-        {ticketStatuses.map((status) => (
-          <div className="ticket-column" key={status}>
-            <h3>{statusLabel[status]}</h3>
-            {project.tickets.filter((ticket) => ticket.status === status).map((ticket) => (
-              <article className="ticket-card" key={ticket.id}>
-                <div className="ticket-top">
-                  <strong>{ticket.title}</strong>
-                  <span>{ticket.priority ?? "medium"}</span>
-                </div>
-                <p>{ticket.summary || "No summary yet."}</p>
-                <div className="ticket-meta">
-                  <span>{ticket.acceptance_criteria?.length ?? 0} criteria</span>
-                  <span>{ticket.generated_prompts?.length ?? 0} prompts</span>
-                </div>
-                <div className="ticket-actions">
-                  <select value={ticket.status} onChange={(event) => onStatus(project, ticket, event.target.value as TicketStatus)}>
-                    {ticketStatuses.map((nextStatus) => <option key={nextStatus} value={nextStatus}>{statusLabel[nextStatus]}</option>)}
-                  </select>
-                  <button className="icon-button" onClick={() => onHandoff(ticket)} aria-label={`Generate handoff for ${ticket.title}`}>
-                    <Sparkles size={15} />
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
-        ))}
-      </section>
-    </div>
+    <button
+      {...rest}
+      className="h-[22px] px-2 rounded-[3px] text-[11px] text-ink-soft hover:bg-surface-4 hover:text-ink inline-flex items-center gap-1.5"
+    >
+      <Icon size={12} />
+      {children}
+    </button>
   );
 }
 
-function NotesView({
-  project,
-  noteTitle,
-  noteBody,
-  noteType,
-  onTitle,
-  onBody,
-  onType,
-  onCreate,
+/* -------------------------------- sidebar ------------------------------- */
+
+function Sidebar({
+  workspace,
+  rootPath,
+  onRootPathChange,
+  selectedSlug,
+  onSelectProject,
+  nav,
+  onNav,
+  onRefresh,
+  onSeed,
 }: {
-  project: WaymarkProject;
-  noteTitle: string;
-  noteBody: string;
-  noteType: "idea" | "decision";
-  onTitle: (value: string) => void;
-  onBody: (value: string) => void;
-  onType: (value: "idea" | "decision") => void;
-  onCreate: (project: WaymarkProject) => void;
+  workspace: WorkspaceData | null;
+  rootPath: string;
+  onRootPathChange: (value: string) => void;
+  selectedSlug: string | null;
+  onSelectProject: (slug: string) => void;
+  nav: NavId;
+  onNav: (id: NavId) => void;
+  onRefresh: () => void;
+  onSeed: () => void;
 }) {
-  return (
-    <div className="dashboard-grid">
-      <section className="form-panel">
-        <h3>Capture Thinking</h3>
-        <div className="segmented">
-          <button className={noteType === "idea" ? "selected" : ""} onClick={() => onType("idea")}>Idea</button>
-          <button className={noteType === "decision" ? "selected" : ""} onClick={() => onType("decision")}>Decision</button>
-        </div>
-        <input placeholder="Title" value={noteTitle} onChange={(event) => onTitle(event.target.value)} />
-        <textarea placeholder="What did you decide, learn, or want to explore?" value={noteBody} onChange={(event) => onBody(event.target.value)} />
-        <button className="button primary" onClick={() => onCreate(project)}>
-          <Plus size={15} />
-          Save {noteType}
-        </button>
-      </section>
-
-      <section className="panel">
-        <div className="panel-header">
-          <h3>Ideas</h3>
-          <span>{project.ideas.length}</span>
-        </div>
-        <NoteRows notes={project.ideas} />
-      </section>
-
-      <section className="panel">
-        <div className="panel-header">
-          <h3>Decisions</h3>
-          <span>{project.decisions.length}</span>
-        </div>
-        <NoteRows notes={project.decisions} />
-      </section>
-    </div>
-  );
-}
-
-function ThreadsView({
-  project,
-  threadTitle,
-  threadProvider,
-  threadUrl,
-  onTitle,
-  onProvider,
-  onUrl,
-  onCreate,
-}: {
-  project: WaymarkProject;
-  threadTitle: string;
-  threadProvider: ThreadRecord["provider"];
-  threadUrl: string;
-  onTitle: (value: string) => void;
-  onProvider: (value: ThreadRecord["provider"]) => void;
-  onUrl: (value: string) => void;
-  onCreate: (project: WaymarkProject) => void;
-}) {
-  return (
-    <div className="dashboard-grid">
-      <section className="form-panel">
-        <h3>Add AI Thread Reference</h3>
-        <input placeholder="Thread title" value={threadTitle} onChange={(event) => onTitle(event.target.value)} />
-        <select value={threadProvider} onChange={(event) => onProvider(event.target.value as ThreadRecord["provider"])}>
-          <option value="codex">Codex</option>
-          <option value="claude">Claude</option>
-          <option value="chatgpt">ChatGPT</option>
-          <option value="cursor">Cursor</option>
-          <option value="other">Other</option>
-        </select>
-        <input placeholder="Optional URL" value={threadUrl} onChange={(event) => onUrl(event.target.value)} />
-        <button className="button primary" onClick={() => onCreate(project)}>
-          <Plus size={15} />
-          Save Thread
-        </button>
-      </section>
-
-      <section className="panel span-2">
-        <div className="panel-header">
-          <h3>Thread Records</h3>
-          <span>{project.threads.length}</span>
-        </div>
-        <div className="rows">
-          {project.threads.map((thread) => (
-            <div className="data-row" key={thread.id}>
-              <div>
-                <strong>{thread.title}</strong>
-                <span>{thread.provider} · {thread.status} · {thread.summary_file ?? "no summary"}</span>
-              </div>
-              <OpenButtons url={thread.url ?? undefined} />
-            </div>
-          ))}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function HandoffView({
-  project,
-  ticket,
-  selectedContext,
-  onContext,
-  onTicket,
-  onGenerate,
-}: {
-  project: WaymarkProject;
-  ticket: Ticket;
-  selectedContext: string[];
-  onContext: (value: string[]) => void;
-  onTicket: (id: string) => void;
-  onGenerate: (project: WaymarkProject, ticket: Ticket) => void;
-}) {
-  const warnings = ticketWarnings(project, ticket);
-  const prompt = buildPrompt(project, ticket, selectedContext);
-  const contextOptions = [
-    ["repos", "Repos"],
-    ["files", "Linked files"],
-    ["decisions", "Decisions"],
-    ["threads", "AI threads"],
-    ["links", "Links"],
+  const counts = useMemo(() => aggregateNavCounts(workspace), [workspace]);
+  const navItems: { id: NavId; label: string; icon: LucideIcon; count: number }[] = [
+    { id: "home", label: "Overview", icon: LayoutGrid, count: workspace?.projects.length ?? 0 },
+    { id: "queue", label: "Queue", icon: ListChecks, count: counts.active },
+    { id: "decisions", label: "Decisions", icon: ListOrdered, count: counts.decisions },
+    { id: "threads", label: "Threads", icon: MessageSquareText, count: counts.threads },
+    { id: "ideas", label: "Ideas", icon: Lightbulb, count: counts.ideas },
+    { id: "inbox", label: "Inbox", icon: Inbox, count: counts.warnings },
   ];
 
   return (
-    <div className="handoff-grid">
-      <section className="panel">
-        <div className="panel-header">
-          <h3>Ticket</h3>
-          <span>{ticket.status}</span>
-        </div>
-        <select value={ticket.id} onChange={(event) => onTicket(event.target.value)}>
-          {project.tickets.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.title}</option>)}
-        </select>
-        <div className="handoff-ticket">
-          <h3>{ticket.title}</h3>
-          <p>{ticket.summary || "No summary yet."}</p>
-        </div>
-        <div className="panel-header slim">
-          <h3>Readiness</h3>
-          <span>{warnings.length}</span>
-        </div>
-        <WarningList warnings={warnings.length ? warnings : ["Looks ready for a local agent handoff."]} good={!warnings.length} />
-        <div className="context-list">
-          {contextOptions.map(([key, label]) => (
-            <label key={key}>
-              <input
-                type="checkbox"
-                checked={selectedContext.includes(key)}
-                onChange={(event) =>
-                  onContext(
-                    event.target.checked
-                      ? [...selectedContext, key]
-                      : selectedContext.filter((candidate) => candidate !== key),
-                  )
-                }
-              />
-              {label}
-            </label>
-          ))}
-        </div>
-        <button className="button primary wide" onClick={() => onGenerate(project, ticket)}>
-          <Sparkles size={15} />
-          Save & Copy Prompt
-        </button>
-      </section>
+    <aside className="bg-surface-rail border-r border-line flex flex-col min-h-0">
+      <div className="flex items-center gap-2.5 px-3.5 pt-3.5 pb-3 border-b border-line-soft">
+        <Triangle size={14} className="text-accent shrink-0" fill="currentColor" strokeWidth={0} />
+        <span className="font-semibold text-[13.5px] tracking-[-0.01em]">Waymark</span>
+        <span className="ml-auto font-mono text-[10.5px] text-ink-mute">0.1.0</span>
+      </div>
 
-      <section className="panel prompt-panel">
-        <div className="panel-header">
-          <h3>Generated Prompt Preview</h3>
-          <span>{prompt.length} chars</span>
+      <div className="px-2.5 py-2.5 border-b border-line-soft whitespace-nowrap overflow-hidden">
+        <div className="text-[10px] uppercase tracking-[0.09em] text-ink-mute mx-1 my-1 font-medium">
+          Workspace
         </div>
-        <pre>{prompt}</pre>
-      </section>
-    </div>
-  );
-}
-
-function WarningList({ warnings, good = false }: { warnings: string[]; good?: boolean }) {
-  if (!warnings.length) return <p className="muted">No warnings.</p>;
-
-  return (
-    <div className="warning-list">
-      {warnings.map((warning) => (
-        <div className={good ? "good-item" : "warning-item"} key={warning}>
-          {good ? <CheckCircle2 size={15} /> : <AlertTriangle size={15} />}
-          <span>{warning}</span>
+        <div className="flex items-center gap-2 h-[26px] px-2 rounded-[3px] bg-surface-3 border border-line-soft font-mono text-[11px] text-ink-soft">
+          <span
+            className={cx(
+              "w-1.5 h-1.5 rounded-full shrink-0",
+              workspace
+                ? "bg-lane-done shadow-[0_0_0_2px_oklch(0.74_0.13_150_/_0.18)]"
+                : "bg-ink-mute",
+            )}
+          />
+          <input
+            value={rootPath}
+            onChange={(event) => onRootPathChange(event.target.value)}
+            spellCheck={false}
+            aria-label="Workspace path"
+            className="flex-1 min-w-0 bg-transparent border-0 outline-0 p-0 font-inherit overflow-hidden text-ellipsis whitespace-nowrap"
+          />
+          <ChevronDown size={12} className="text-ink-mute ml-auto" />
         </div>
-      ))}
-    </div>
-  );
-}
+        <div className="flex gap-1.5 mt-1.5 px-1 whitespace-nowrap overflow-hidden">
+          <span className="font-mono text-[10.5px] text-ink-faint inline-flex items-center gap-1 shrink-0">
+            <GitBranch size={11} /> main
+          </span>
+          <span className="ml-auto font-mono text-[10.5px] text-ink-mute shrink-0">
+            {workspace ? `${workspace.projects.length} projects` : "not loaded"}
+          </span>
+        </div>
+        <div className="flex gap-1 mt-1.5">
+          <SidebarChipButton onClick={onRefresh}>
+            <RefreshCw size={11} /> Reload
+          </SidebarChipButton>
+          <SidebarChipButton onClick={onSeed}>
+            <Sparkles size={11} /> Seed
+          </SidebarChipButton>
+        </div>
+      </div>
 
-function OpenButtons({ path, url }: { path?: string; url?: string }) {
-  return (
-    <div className="open-buttons">
-      {path ? (
-        <button className="icon-button" onClick={() => openPath(path)} aria-label="Open local path">
-          <FolderOpen size={15} />
-        </button>
-      ) : null}
-      {url ? (
-        <button className="icon-button" onClick={() => openPath(url)} aria-label="Open URL">
-          <ArrowUpRight size={15} />
-        </button>
-      ) : null}
-    </div>
-  );
-}
+      <nav className="p-2 border-b border-line-soft flex flex-col gap-px">
+        {navItems.map((item) => (
+          <NavItem
+            key={item.id}
+            label={item.label}
+            count={item.count}
+            icon={item.icon}
+            active={nav === item.id}
+            onClick={() => onNav(item.id)}
+          />
+        ))}
+      </nav>
 
-function NoteRows({ notes }: { notes: { path: string; title: string; status?: string; body: string }[] }) {
-  return (
-    <div className="rows">
-      {notes.map((note) => (
-        <div className="note-row" key={note.path}>
-          <div>
-            <strong>{note.title}</strong>
-            <span>{note.status ?? "open"}</span>
+      <div className="flex-1 min-h-0 overflow-y-auto px-2 pt-1.5 pb-3">
+        <div className="flex items-center gap-1.5 px-1.5 pt-2 pb-1.5">
+          <div className="text-[10px] uppercase tracking-[0.09em] text-ink-mute flex-1 font-medium">
+            Projects
           </div>
-          <p>{note.body.replace(/^# .+$/m, "").trim().slice(0, 180)}</p>
+          <button className="w-[18px] h-[18px] grid place-items-center rounded-[3px] text-ink-faint hover:bg-surface-3 hover:text-ink" aria-label="New project">
+            <Plus size={12} />
+          </button>
+        </div>
+        {workspace?.projects.map((project, index) => {
+          const kind = projectStatusKind(project);
+          const active = project.tickets.filter(
+            (ticket) => ticket.status === "now" || ticket.status === "next",
+          ).length;
+          return (
+            <ProjectRow
+              key={project.config.slug}
+              project={project}
+              index={index}
+              active={active}
+              kind={kind}
+              selected={project.config.slug === selectedSlug}
+              onClick={() => onSelectProject(project.config.slug)}
+            />
+          );
+        })}
+        {!workspace?.projects.length ? (
+          <div className="px-1.5 py-2.5 text-ink-mute text-[12px]">No projects yet.</div>
+        ) : null}
+      </div>
+
+      <div className="border-t border-line-soft px-3 py-2 flex items-center gap-2 text-[11px] text-ink-faint whitespace-nowrap overflow-hidden">
+        <span className="w-1.5 h-1.5 rounded-full bg-lane-done shadow-[0_0_0_3px_oklch(0.74_0.13_150_/_0.18)] shrink-0" />
+        <span className="shrink-0">Indexer idle</span>
+        <span className="ml-auto font-mono text-[10.5px] text-ink-mute shrink-0">
+          {workspace ? "ready" : "—"}
+        </span>
+      </div>
+    </aside>
+  );
+}
+
+function SidebarChipButton({ children, ...rest }: ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      {...rest}
+      className="h-[22px] px-2 rounded-[3px] text-[11px] text-ink-faint border border-line-soft bg-surface-2 hover:bg-surface-4 hover:text-ink inline-flex items-center gap-1"
+    >
+      {children}
+    </button>
+  );
+}
+
+function NavItem({
+  label,
+  count,
+  icon: Icon,
+  active,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  icon: LucideIcon;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cx(
+        "flex items-center gap-2.5 h-[26px] px-2 rounded-[3px] text-[12.5px] cursor-pointer w-full text-left",
+        active
+          ? "bg-accent-soft text-accent-fg shadow-[inset_2px_0_0_var(--color-accent)]"
+          : "text-ink-soft hover:bg-surface-3 hover:text-ink",
+      )}
+    >
+      <span className={cx("w-3.5 inline-flex shrink-0", active ? "text-accent" : "text-ink-faint")}>
+        <Icon size={13} />
+      </span>
+      <span>{label}</span>
+      <span
+        className={cx(
+          "ml-auto font-mono text-[10.5px] px-1.5 rounded-[3px] leading-[15px]",
+          active ? "bg-[oklch(0.78_0.135_75_/_0.18)] text-accent" : "bg-surface-3 text-ink-mute",
+        )}
+      >
+        {count}
+      </span>
+    </button>
+  );
+}
+
+function ProjectRow({
+  project,
+  index,
+  active,
+  kind,
+  selected,
+  onClick,
+}: {
+  project: WaymarkProject;
+  index: number;
+  active: number;
+  kind: "warn" | "ok" | "idle";
+  selected: boolean;
+  onClick: () => void;
+}) {
+  const dot = kind === "ok" ? "bg-lane-done" : kind === "warn" ? "bg-warn" : "bg-ink-mute";
+  return (
+    <button
+      onClick={onClick}
+      className={cx(
+        "grid grid-cols-proj items-center gap-2 h-[30px] px-2 rounded-[3px] cursor-pointer w-full text-left",
+        selected
+          ? "bg-surface-row-selected text-ink shadow-[inset_2px_0_0_var(--color-accent)]"
+          : "text-ink-soft hover:bg-surface-3 hover:text-ink",
+      )}
+    >
+      <span
+        className="w-4 h-4 rounded-[3px] grid place-items-center text-[9px] font-bold font-mono tracking-[-0.04em] text-[oklch(0.16_0.01_250)]"
+        style={{ background: projectColor(project.config.slug, index) }}
+      >
+        {projectMark(project.config.slug)}
+      </span>
+      <span className="text-[12.5px] overflow-hidden text-ellipsis whitespace-nowrap">
+        {project.config.name}
+      </span>
+      <span className="flex items-center gap-1">
+        <span className={cx("w-[5px] h-[5px] rounded-full", dot)} />
+        <span className="font-mono text-[10px] text-ink-mute">{active}</span>
+      </span>
+    </button>
+  );
+}
+
+function aggregateNavCounts(workspace: WorkspaceData | null) {
+  if (!workspace) return { active: 0, decisions: 0, threads: 0, ideas: 0, warnings: 0 };
+  let active = 0;
+  let decisions = 0;
+  let threads = 0;
+  let ideas = 0;
+  let warnings = workspace.warnings.length;
+  for (const project of workspace.projects) {
+    for (const ticket of project.tickets) {
+      if (ticket.status === "now" || ticket.status === "next" || ticket.status === "blocked") active += 1;
+    }
+    decisions += project.decisions.length;
+    threads += project.threads.length;
+    ideas += project.ideas.length;
+    warnings += project.warnings.length;
+  }
+  return { active, decisions, threads, ideas, warnings };
+}
+
+/* ------------------------------ main header ----------------------------- */
+
+function MainHeader({
+  project,
+  workspace,
+  tab,
+  onTab,
+  handoffDisabled,
+  search,
+  onSearch,
+  onCapture,
+  onSendHandoff,
+}: {
+  project: WaymarkProject | null;
+  workspace: WorkspaceData | null;
+  tab: MainTab;
+  onTab: (value: MainTab) => void;
+  handoffDisabled: boolean;
+  search: string;
+  onSearch: (value: string) => void;
+  onCapture: () => void;
+  onSendHandoff: () => void;
+}) {
+  const counts = project
+    ? {
+        tickets: project.tickets.filter((t) => t.status !== "done" && t.status !== "idea").length,
+        decisions: project.decisions.length,
+        threads: project.threads.length,
+      }
+    : { tickets: 0, decisions: 0, threads: 0 };
+
+  return (
+    <>
+      <div className="flex items-center gap-3.5 px-[18px] h-[46px] border-b border-line shrink-0">
+        <h1 className="m-0 text-[14px] font-semibold tracking-[-0.005em] text-ink flex items-center gap-2.5 whitespace-nowrap shrink-0">
+          <span style={{ color: project ? projectColor(project.config.slug, 0) : "var(--color-accent)" }}>
+            <Triangle size={13} fill="currentColor" strokeWidth={0} />
+          </span>
+          <span className="shrink-0 whitespace-nowrap">
+            {project?.config.name ?? workspace?.config.name ?? "No project"}
+          </span>
+          <span className="font-mono text-[10.5px] text-ink-faint font-normal px-1.5 py-0.5 border border-line rounded-[3px] bg-surface-2 shrink-0">
+            {project?.config.stage ?? "—"}
+          </span>
+        </h1>
+        <div className="text-[11.5px] text-ink-faint flex-1 min-w-[80px] overflow-hidden text-ellipsis whitespace-nowrap">
+          Focus: <b className="text-ink-soft font-medium">{project?.config.current_focus || project?.config.summary || "—"}</b>
+        </div>
+        <div className="flex h-full items-center ml-auto">
+          <Tab id="overview" active={tab === "overview"} onClick={onTab}>Overview</Tab>
+          <Tab id="tickets" active={tab === "tickets"} onClick={onTab}>
+            Tickets <TabBadge>{counts.tickets}</TabBadge>
+          </Tab>
+          <Tab id="decisions" active={tab === "decisions"} onClick={onTab}>
+            Decisions <TabBadge>{counts.decisions}</TabBadge>
+          </Tab>
+          <Tab id="threads" active={tab === "threads"} onClick={onTab}>
+            Threads <TabBadge>{counts.threads}</TabBadge>
+          </Tab>
+          <Tab id="files" active={tab === "files"} onClick={onTab}>Files</Tab>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 px-[18px] py-2.5 border-b border-line shrink-0">
+        <div className="flex-1 min-w-0 flex items-center gap-2 h-7 px-2.5 bg-surface-2 border border-line-soft rounded-[5px] text-ink-faint text-[12px]">
+          <Search size={13} />
+          <input
+            placeholder="Find ticket, decision, thread, file…"
+            value={search}
+            onChange={(event) => onSearch(event.target.value)}
+            className="flex-1 min-w-0 bg-transparent border-0 outline-0 text-[12.5px] text-ink placeholder:text-ink-mute"
+          />
+          <span className="kbd">⌘K</span>
+        </div>
+        <Btn variant="ghost" title="Filters">
+          <Sliders size={13} /> Filters
+        </Btn>
+        <Btn variant="ghost" onClick={onCapture}>
+          <Plus size={13} /> Capture
+        </Btn>
+        <Btn variant="primary" onClick={onSendHandoff} disabled={handoffDisabled}>
+          <Sparkles size={11} /> Handoff <span className="kbd bg-[oklch(0_0_0_/_0.22)] border-[oklch(0_0_0_/_0.3)] text-accent-ink">⌘↵</span>
+        </Btn>
+      </div>
+    </>
+  );
+}
+
+function Tab({
+  id,
+  active,
+  children,
+  onClick,
+}: {
+  id: MainTab;
+  active: boolean;
+  children: ReactNode;
+  onClick: (id: MainTab) => void;
+}) {
+  return (
+    <button
+      onClick={() => onClick(id)}
+      className={cx(
+        "relative h-full inline-flex items-center gap-1.5 px-2 text-[11.5px] whitespace-nowrap shrink-0 cursor-pointer",
+        active
+          ? "text-ink after:content-[''] after:absolute after:left-2.5 after:right-2.5 after:-bottom-px after:h-0.5 after:bg-accent after:rounded-t-[2px]"
+          : "text-ink-faint hover:text-ink",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function TabBadge({ children }: { children: ReactNode }) {
+  return (
+    <span className="font-mono text-[10px] bg-surface-row-selected border border-line px-1 rounded-[3px] text-ink-faint leading-[14px]">
+      {children}
+    </span>
+  );
+}
+
+/* -------------------------------- stats -------------------------------- */
+
+function Stats({ project }: { project: WaymarkProject }) {
+  const counts = useMemo(() => {
+    const out: Record<Lane, number> = { now: 0, next: 0, later: 0, blocked: 0, done: 0 };
+    for (const ticket of project.tickets) {
+      const lane = activeLane(ticket.status);
+      if (lane) out[lane] += 1;
+    }
+    return out;
+  }, [project]);
+
+  type Cell = { key: string; label: string; sub: string; n: number; pin: string; numClass?: string };
+  const cells: Cell[] = [
+    { key: "now", label: "Now", sub: "in progress", n: counts.now, pin: "now" },
+    { key: "next", label: "Next", sub: "queued", n: counts.next, pin: "next" },
+    { key: "later", label: "Later", sub: "backlog", n: counts.later, pin: "later" },
+    { key: "blocked", label: "Blocked", sub: "awaiting", n: counts.blocked, pin: "blocked", numClass: "text-danger" },
+    { key: "warn", label: "Warnings", sub: "gaps", n: project.warnings.length, pin: "warn", numClass: "text-warn" },
+    { key: "done", label: "Shipped", sub: "all-time", n: counts.done, pin: "done" },
+  ];
+
+  return (
+    <div className="grid grid-cols-stats border border-line rounded-[5px] bg-surface-2 mb-[18px]">
+      {cells.map((cell, index) => (
+        <div
+          key={cell.key}
+          className={cx(
+            "px-3.5 py-2.5 flex flex-col gap-1 min-w-0",
+            index < cells.length - 1 && "border-r border-line-soft",
+          )}
+        >
+          <div className="text-[10px] uppercase tracking-[0.09em] text-ink-mute font-medium flex items-center gap-1.5">
+            <Pin kind={cell.pin} />
+            {cell.label}
+          </div>
+          <div className={cx("font-mono text-[22px] font-medium tracking-[-0.02em] leading-none", cell.numClass ?? "text-ink")}>
+            {cell.n}
+          </div>
+          <div className="text-[10.5px] font-mono text-ink-faint">{cell.sub}</div>
         </div>
       ))}
     </div>
   );
 }
 
-export default App;
+/* -------------------------------- queue -------------------------------- */
+
+function Queue({
+  project,
+  selectedKey,
+  onSelect,
+  multi,
+  toggleMulti,
+  search,
+}: {
+  project: WaymarkProject;
+  selectedKey: string | null;
+  onSelect: (ticket: Ticket) => void;
+  multi: string[];
+  toggleMulti: (id: string) => void;
+  search: string;
+}) {
+  const lanes = useMemo(() => {
+    const filter = search.trim().toLowerCase();
+    const matching = project.tickets.filter((ticket) => {
+      if (ticket.status === "idea") return false;
+      if (!filter) return true;
+      return (
+        ticket.title.toLowerCase().includes(filter) ||
+        ticket.id.toLowerCase().includes(filter) ||
+        ticket.summary?.toLowerCase().includes(filter)
+      );
+    });
+    return LANES_IN_QUEUE.map((lane) => ({
+      lane,
+      items: matching.filter((ticket) => ticket.status === lane),
+    })).filter((group) => group.items.length > 0);
+  }, [project, search]);
+
+  const activeCount = project.tickets.filter(
+    (ticket) => ticket.status !== "done" && ticket.status !== "idea",
+  ).length;
+
+  return (
+    <div className="mb-[22px]">
+      <SectionHead
+        more={
+          <button className="text-[11px] text-ink-mute inline-flex items-center gap-1 hover:text-ink-soft cursor-pointer">
+            View all <ArrowRight size={11} />
+          </button>
+        }
+      >
+        Queue <span className="font-mono text-[10px] text-ink-mute font-normal tracking-normal normal-case">{activeCount} active</span>
+      </SectionHead>
+      <Card>
+        {lanes.length === 0 ? (
+          <EmptyRow>No tickets match.</EmptyRow>
+        ) : (
+          lanes.map((group) => (
+            <div key={group.lane}>
+              <div className="flex items-center h-6 px-3.5 bg-surface-rail-3 border-b border-line-soft text-[10px] uppercase tracking-[0.09em] text-ink-faint font-semibold gap-2">
+                <Pin kind={group.lane} />
+                {LANE_LABEL[group.lane]}
+                <span className="font-mono text-[10px] text-ink-mute font-normal tracking-normal normal-case ml-1">
+                  {group.items.length}
+                </span>
+              </div>
+              {group.items.map((ticket) => (
+                <TicketRow
+                  key={ticket.id}
+                  project={project}
+                  ticket={ticket}
+                  selected={selectedKey === ticket.id}
+                  multiSel={multi.includes(ticket.id)}
+                  onClick={() => onSelect(ticket)}
+                  onToggleMulti={() => toggleMulti(ticket.id)}
+                />
+              ))}
+            </div>
+          ))
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function EmptyRow({ children }: { children: ReactNode }) {
+  return <div className="px-4 py-4 text-ink-mute text-center text-[12px]">{children}</div>;
+}
+
+function TicketRow({
+  project,
+  ticket,
+  selected,
+  multiSel,
+  onClick,
+  onToggleMulti,
+}: {
+  project: WaymarkProject;
+  ticket: Ticket;
+  selected: boolean;
+  multiSel: boolean;
+  onClick: () => void;
+  onToggleMulti: () => void;
+}) {
+  const warnings = ticketWarnings(project, ticket);
+  return (
+    <div
+      onClick={onClick}
+      className={cx(
+        "grid grid-cols-ticket items-center gap-2.5 px-3.5 h-8 border-b border-line-soft last:border-b-0 cursor-pointer hover:bg-surface-row-hover",
+        selected && "bg-surface-row-selected shadow-[inset_2px_0_0_var(--color-accent)]",
+        multiSel && !selected && "bg-[oklch(0.78_0.135_75_/_0.06)]",
+      )}
+    >
+      <div
+        className="grid place-items-center"
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggleMulti();
+        }}
+      >
+        <span
+          className={cx(
+            "w-3.5 h-3.5 rounded-[3px] border grid place-items-center",
+            multiSel ? "bg-accent border-accent text-accent-ink" : "border-line bg-surface-input",
+          )}
+        >
+          {multiSel ? <Check size={9} /> : null}
+        </span>
+      </div>
+      <div className="font-mono text-[11px] text-ink-faint overflow-hidden text-ellipsis whitespace-nowrap">
+        {ticket.id}
+      </div>
+      <div className="text-[12.5px] text-ink flex items-center gap-2 min-w-0">
+        <span className="overflow-hidden text-ellipsis whitespace-nowrap">{ticket.title}</span>
+        {warnings.length > 0 ? (
+          <span className="inline-flex items-center gap-1 text-[10.5px] text-warn bg-[oklch(0.82_0.14_90_/_0.12)] px-1.5 py-px rounded-[3px] whitespace-nowrap">
+            <AlertTriangle size={11} /> {warnings[0]}
+          </span>
+        ) : null}
+      </div>
+      <div className="flex gap-1 items-center">
+        {ticketHasFlag(ticket, "thread") ? (
+          <Flag title="Has linked thread"><MessageSquareText size={11} /></Flag>
+        ) : null}
+        {ticketHasFlag(ticket, "ac") ? (
+          <Flag tone="ok" title="Acceptance criteria"><Check size={10} /> AC</Flag>
+        ) : (
+          <Flag tone="muted" title="No acceptance criteria">AC</Flag>
+        )}
+        {ticketHasFlag(ticket, "decision") ? (
+          <Flag title="Linked decision"><Link2 size={10} /></Flag>
+        ) : null}
+      </div>
+      <div className="font-mono text-[10.5px] text-ink-faint overflow-hidden text-ellipsis whitespace-nowrap">
+        {projectFile(project, ticket)}
+      </div>
+      <div className="font-mono text-[10.5px] text-ink-mute text-right">
+        {ticket.priority ?? "med"}
+      </div>
+    </div>
+  );
+}
+
+/* ----------------------------- decisions -------------------------------- */
+
+function Decisions({ decisions }: { decisions: NoteRecord[] }) {
+  if (decisions.length === 0) {
+    return (
+      <div className="mb-[22px]">
+        <SectionHead>
+          Recent decisions <span className="font-mono text-[10px] text-ink-mute font-normal normal-case tracking-normal">0</span>
+        </SectionHead>
+        <Card>
+          <EmptyRow>No decisions captured yet.</EmptyRow>
+        </Card>
+      </div>
+    );
+  }
+  return (
+    <div className="mb-[22px]">
+      <SectionHead
+        more={
+          <button className="text-[11px] text-ink-mute inline-flex items-center gap-1 hover:text-ink-soft cursor-pointer">
+            All decisions <ArrowRight size={11} />
+          </button>
+        }
+      >
+        Recent decisions <span className="font-mono text-[10px] text-ink-mute font-normal normal-case tracking-normal">last entries</span>
+      </SectionHead>
+      <Card>
+        {decisions.slice(0, 8).map((decision) => (
+          <div
+            key={decision.path}
+            className="grid grid-cols-decision items-center gap-3 px-3.5 h-[30px] border-b border-line-soft last:border-b-0 text-[12px] hover:bg-surface-row-hover"
+          >
+            <div className="font-mono text-[11px] text-ink-faint overflow-hidden text-ellipsis whitespace-nowrap">{decision.id}</div>
+            <div className="text-ink overflow-hidden text-ellipsis whitespace-nowrap">{decision.title}</div>
+            <div className="font-mono text-[10px] text-ink-faint bg-surface-row-selected border border-line px-1.5 py-px rounded-[3px] justify-self-start">
+              {decision.status ?? "decision"}
+            </div>
+            <div className="font-mono text-[10.5px] text-ink-mute">{decision.date ?? "—"}</div>
+            <div className="font-mono text-[10.5px] text-ink-mute overflow-hidden text-ellipsis whitespace-nowrap text-right">
+              {decision.path.split("/").slice(-2).join("/")}
+            </div>
+          </div>
+        ))}
+      </Card>
+    </div>
+  );
+}
+
+/* --------------------------- ideas + activity --------------------------- */
+
+function IdeasAndActivity({
+  project,
+  workspace,
+}: {
+  project: WaymarkProject;
+  workspace: WorkspaceData;
+}) {
+  const activity = useMemo(() => buildActivity(workspace, project), [workspace, project]);
+  return (
+    <div className="grid grid-cols-2 gap-[22px] mb-[22px]">
+      <div>
+        <SectionHead>
+          Ideas <span className="hidden font-mono text-[10px] text-ink-mute font-normal normal-case tracking-normal">{project.ideas.length} captured</span>
+        </SectionHead>
+        <Card>
+          {project.ideas.length === 0 ? (
+            <EmptyRow>No ideas captured.</EmptyRow>
+          ) : (
+            project.ideas.slice(0, 8).map((idea) => (
+              <div
+                key={idea.path}
+                className="grid grid-cols-idea gap-2.5 items-center px-3 h-7 border-b border-line-soft last:border-b-0 hover:bg-surface-row-hover"
+              >
+                <span className="font-mono text-[10.5px] text-ink-mute overflow-hidden text-ellipsis whitespace-nowrap">
+                  {idea.id}
+                </span>
+                <span className="text-[12px] text-ink-soft overflow-hidden text-ellipsis whitespace-nowrap">{idea.title}</span>
+                <span className="font-mono text-[10px] text-ink-mute text-right">{idea.date ?? "—"}</span>
+              </div>
+            ))
+          )}
+        </Card>
+      </div>
+      <div>
+        <SectionHead>Activity</SectionHead>
+        <Card>
+          {activity.length === 0 ? (
+            <EmptyRow>Nothing recent.</EmptyRow>
+          ) : (
+            activity.map((row, index) => (
+              <div
+                key={`${row.kind}-${index}`}
+                className="grid grid-cols-activity gap-2.5 items-center px-3 h-[26px] border-b border-line-soft last:border-b-0"
+              >
+                <span className="font-mono text-[10px] text-ink-mute">{row.t}</span>
+                <span className="inline-flex items-center"><Pin kind={row.kind} /></span>
+                <span className="font-mono text-[10px] text-ink-faint">{row.proj}</span>
+                <span className="text-[11.5px] text-ink-soft overflow-hidden text-ellipsis whitespace-nowrap">{row.text}</span>
+              </div>
+            ))
+          )}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------- inspector ----------------------------- */
+
+function Inspector({
+  mode,
+  onMode,
+  project,
+  ticket,
+  multi,
+  workspace,
+  onSendHandoff,
+  onStatus,
+}: {
+  mode: InspectorMode;
+  onMode: (value: InspectorMode) => void;
+  project: WaymarkProject | null;
+  ticket: Ticket | null;
+  multi: string[];
+  workspace: WorkspaceData | null;
+  onSendHandoff: () => void;
+  onStatus: (ticket: Ticket, status: TicketStatus) => void;
+}) {
+  const bundleSize = multi.length;
+
+  return (
+    <aside className="bg-surface-rail-2 border-l border-line flex flex-col min-h-0">
+      <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-line shrink-0">
+        <InspectorTab active={mode === "ticket"} onClick={() => onMode("ticket")} icon={FileText}>
+          Ticket
+        </InspectorTab>
+        <InspectorTab active={mode === "prompt"} onClick={() => onMode("prompt")} icon={Sparkles}>
+          Handoff
+          {bundleSize > 0 ? (
+            <span className="font-mono text-[9.5px] px-1 rounded-[3px] bg-accent text-accent-ink leading-[14px]">{bundleSize}</span>
+          ) : null}
+        </InspectorTab>
+        <InspectorTab active={mode === "thread"} onClick={() => onMode("thread")} icon={MessageSquareText}>
+          Thread
+        </InspectorTab>
+        <div className="flex-1" />
+        <button className="w-6 h-6 grid place-items-center rounded-[3px] text-ink-faint hover:bg-surface-3 hover:text-ink" title="Open in editor">
+          <Link2 size={12} />
+        </button>
+      </div>
+
+      {!project || !workspace ? (
+        <InspectorEmpty>Open a workspace to see ticket details.</InspectorEmpty>
+      ) : mode === "ticket" ? (
+        ticket ? (
+          <InspectorTicket project={project} ticket={ticket} onStatus={onStatus} onSendHandoff={onSendHandoff} />
+        ) : (
+          <InspectorEmpty>Select a ticket to inspect.</InspectorEmpty>
+        )
+      ) : mode === "prompt" ? (
+        <InspectorPrompt
+          project={project}
+          ticket={ticket}
+          multi={multi}
+          workspace={workspace}
+          onSendHandoff={onSendHandoff}
+        />
+      ) : (
+        <InspectorThread project={project} ticket={ticket} />
+      )}
+    </aside>
+  );
+}
+
+function InspectorTab({
+  active,
+  onClick,
+  icon: Icon,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: LucideIcon;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cx(
+        "inline-flex items-center gap-1.5 h-[26px] px-2 rounded-[3px] text-[11.5px] whitespace-nowrap shrink-0 cursor-pointer",
+        active ? "bg-surface-4 text-ink" : "text-ink-faint hover:bg-surface-3 hover:text-ink",
+      )}
+    >
+      <Icon size={12} />
+      {children}
+    </button>
+  );
+}
+
+function InspectorEmpty({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex-1 grid place-items-center text-ink-mute p-8 text-[12px] text-center">
+      {children}
+    </div>
+  );
+}
+
+function InspectorBody({ children }: { children: ReactNode }) {
+  return <div className="flex-1 min-h-0 overflow-y-auto px-4 pt-3.5 pb-[18px]">{children}</div>;
+}
+
+function InspectorActions({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex gap-1 px-2.5 py-2.5 border-t border-line shrink-0 bg-surface-input overflow-hidden flex-wrap">
+      {children}
+    </div>
+  );
+}
+
+function InspectorHead({
+  eyebrow,
+  title,
+  meta,
+}: {
+  eyebrow: ReactNode;
+  title: ReactNode;
+  meta?: ReactNode;
+}) {
+  return (
+    <div className="pb-3.5 border-b border-line-soft mb-3.5">
+      <div className="flex items-center gap-2 mb-2 flex-wrap">{eyebrow}</div>
+      <h2 className="m-0 mb-2 text-[15px] font-semibold leading-[1.3] tracking-[-0.01em]">{title}</h2>
+      {meta}
+    </div>
+  );
+}
+
+function InspectorSection({
+  label,
+  children,
+}: {
+  label: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="mb-3.5">
+      <div className="text-[10px] uppercase tracking-[0.10em] text-ink-mute font-semibold mb-1.5 whitespace-nowrap">
+        {label}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function InspectorTicket({
+  project,
+  ticket,
+  onStatus,
+  onSendHandoff,
+}: {
+  project: WaymarkProject;
+  ticket: Ticket;
+  onStatus: (ticket: Ticket, status: TicketStatus) => void;
+  onSendHandoff: () => void;
+}) {
+  const linkedDecisions = project.decisions.filter((decision) =>
+    ticket.linked_decisions?.includes(decision.id),
+  );
+  const linkedThreads = project.threads.filter((thread) =>
+    ticket.linked_threads?.includes(thread.id),
+  );
+  const file = projectFile(project, ticket);
+  const lane = activeLane(ticket.status);
+
+  return (
+    <>
+      <InspectorBody>
+        <InspectorHead
+          eyebrow={
+            <>
+              <StatusChip status={ticket.status} />
+              <span className="font-mono text-[11px] text-ink-faint">{ticket.id}</span>
+              <span className="font-mono text-[10.5px] text-ink-mute">· {ticket.priority ?? "medium"}</span>
+            </>
+          }
+          title={ticket.title}
+          meta={
+            <div className="flex items-center gap-1.5 font-mono text-[11px] text-ink-faint">
+              <FileText size={11} />
+              <span className="overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0">{file}</span>
+              <button
+                className="inline-flex items-center gap-1 px-1 py-0.5 text-ink-faint rounded-[3px] text-[11px] hover:bg-surface-3 hover:text-ink cursor-pointer"
+                onClick={() => navigator.clipboard?.writeText(file).catch(() => undefined)}
+                title="Copy path"
+              >
+                <Copy size={11} />
+              </button>
+            </div>
+          }
+        />
+
+        <InspectorSection label="Summary">
+          <div className="text-[12.5px] text-ink-soft leading-[1.55]">
+            {ticket.summary ? (
+              ticket.summary
+            ) : (
+              <span className="text-ink-mute">
+                No summary written.{" "}
+                <button className="text-accent hover:underline cursor-pointer">Generate from thread →</button>
+              </span>
+            )}
+          </div>
+        </InspectorSection>
+
+        <InspectorSection label="Acceptance criteria">
+          {ticket.acceptance_criteria?.length ? (
+            <ul className="list-none p-0 m-0 flex flex-col gap-1.5">
+              {ticket.acceptance_criteria.map((item, index) => (
+                <li key={`${item}-${index}`} className="flex items-start gap-2 text-[12px] text-ink-soft leading-[1.4]">
+                  <span className="w-3 h-3 border border-line rounded-[2px] shrink-0 mt-0.5 bg-surface-input" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="flex items-start gap-2 bg-[oklch(0.82_0.14_90_/_0.08)] border border-[oklch(0.82_0.14_90_/_0.22)] px-2.5 py-2 rounded-[5px] text-[12px] text-ink-soft">
+              <AlertTriangle size={12} className="text-warn shrink-0 mt-px" />
+              <span>
+                No acceptance criteria. <button className="text-accent hover:underline cursor-pointer">Draft from thread →</button>
+              </span>
+            </div>
+          )}
+        </InspectorSection>
+
+        {(linkedDecisions.length > 0 || linkedThreads.length > 0 || (ticket.linked_files?.length ?? 0) > 0) && (
+          <InspectorSection label="Linked">
+            <Card>
+              {linkedDecisions.map((decision) => (
+                <LinkRow
+                  key={decision.path}
+                  kind="decision"
+                  identifier={decision.id}
+                  title={decision.title}
+                />
+              ))}
+              {linkedThreads.map((thread) => (
+                <LinkRow
+                  key={thread.id}
+                  kind="thread"
+                  identifier={thread.id}
+                  title={thread.title}
+                  trailing={<span className="font-mono text-[10px] text-ink-mute">{thread.provider}</span>}
+                />
+              ))}
+              {(ticket.linked_files ?? []).map((path) => (
+                <LinkRow
+                  key={path}
+                  kind="file"
+                  identifier="—"
+                  title={path}
+                  trailing={
+                    <button
+                      onClick={() => openPath(path)}
+                      title="Reveal"
+                      className="inline-flex items-center gap-1 px-1 py-0.5 text-ink-faint rounded-[3px] text-[11px] hover:bg-surface-3 hover:text-ink cursor-pointer"
+                    >
+                      <Copy size={10} />
+                    </button>
+                  }
+                />
+              ))}
+            </Card>
+          </InspectorSection>
+        )}
+
+        <InspectorSection label="Frontmatter">
+          <pre className="m-0 px-3 py-2.5 font-mono text-[11px] text-ink-soft bg-surface-input-2 border border-line rounded-[5px] whitespace-pre overflow-x-auto leading-[1.5]">
+{`status: ${ticket.status}
+priority: ${ticket.priority ?? "medium"}
+ac: ${(ticket.acceptance_criteria?.length ?? 0) > 0}
+decisions: [${(ticket.linked_decisions ?? []).join(", ")}]
+threads: [${(ticket.linked_threads ?? []).join(", ")}]
+files: [${(ticket.linked_files ?? []).join(", ")}]
+prompts: ${ticket.generated_prompts?.length ?? 0}`}
+          </pre>
+        </InspectorSection>
+      </InspectorBody>
+
+      <InspectorActions>
+        <Btn variant="primary" onClick={onSendHandoff}>
+          <Sparkles size={11} /> Send to agent
+        </Btn>
+        {lane !== "next" ? <Btn variant="ghost" onClick={() => onStatus(ticket, "next")}>Mark next</Btn> : null}
+        {lane !== "blocked" ? <Btn variant="ghost" onClick={() => onStatus(ticket, "blocked")}>Block</Btn> : null}
+        {lane !== "done" ? <Btn variant="ghost" onClick={() => onStatus(ticket, "done")}>Mark done</Btn> : null}
+      </InspectorActions>
+    </>
+  );
+}
+
+function LinkRow({
+  kind,
+  identifier,
+  title,
+  trailing,
+}: {
+  kind: string;
+  identifier: string;
+  title: string;
+  trailing?: ReactNode;
+}) {
+  return (
+    <div className="grid grid-cols-link gap-2 items-center px-2.5 h-7 border-b border-line-soft last:border-b-0 text-[12px]">
+      <span className="font-mono text-[9.5px] uppercase tracking-[0.07em] text-ink-mute">{kind}</span>
+      <span className="font-mono text-[11px] text-ink-faint overflow-hidden text-ellipsis whitespace-nowrap">{identifier}</span>
+      <span className="text-ink-soft overflow-hidden text-ellipsis whitespace-nowrap">{title}</span>
+      {trailing ?? <span />}
+    </div>
+  );
+}
+
+function InspectorPrompt({
+  project,
+  ticket,
+  multi,
+  workspace,
+  onSendHandoff,
+}: {
+  project: WaymarkProject;
+  ticket: Ticket | null;
+  multi: string[];
+  workspace: WorkspaceData;
+  onSendHandoff: () => void;
+}) {
+  const tickets = project.tickets.filter((candidate) =>
+    multi.length ? multi.includes(candidate.id) : ticket && candidate.id === ticket.id,
+  );
+
+  if (tickets.length === 0) {
+    return <InspectorEmpty>Select a ticket to preview the handoff.</InspectorEmpty>;
+  }
+
+  const prompt = tickets
+    .map((entry) => buildPrompt(project, entry, ["repos", "files", "decisions", "threads", "links"]))
+    .join("\n\n---\n\n");
+  const tokens = tokenEstimate(prompt);
+
+  return (
+    <>
+      <InspectorBody>
+        <InspectorHead
+          eyebrow={<span className="text-[10.5px] text-ink-faint tracking-[0.08em] uppercase">Handoff prompt</span>}
+          title={tickets.length > 1 ? `Bundle · ${tickets.length} tickets` : "Single ticket"}
+          meta={
+            <div className="flex items-center gap-1.5 font-mono text-[10px] text-ink-mute whitespace-nowrap overflow-hidden flex-wrap">
+              <span>● claude-sonnet-4.5</span>
+              <span>·</span>
+              <span>~{tokens.toLocaleString()} tokens</span>
+              <span>·</span>
+              <span>cwd: <code>{workspace.rootPath}</code></span>
+            </div>
+          }
+        />
+
+        <InspectorSection label={<></>}>
+          <div className="border border-line rounded-[5px] bg-surface-input-2 overflow-hidden">
+            <div className="flex items-center gap-2 px-2.5 py-1.5 border-b border-line-soft bg-surface-3">
+              <span className="font-mono text-[10px] text-ink-faint uppercase tracking-[0.06em]">prompt.md</span>
+              <span className="flex-1" />
+              <button
+                onClick={() => navigator.clipboard?.writeText(prompt).catch(() => undefined)}
+                className="inline-flex items-center gap-1 px-1 py-0.5 text-ink-faint rounded-[3px] text-[11px] hover:bg-surface-3 hover:text-ink cursor-pointer"
+              >
+                <Copy size={11} /> Copy
+              </button>
+            </div>
+            <pre className="m-0 px-3 py-2.5 font-mono text-[11px] text-ink-soft whitespace-pre-wrap leading-[1.55] max-h-[360px] overflow-y-auto">
+              {prompt}
+            </pre>
+          </div>
+        </InspectorSection>
+
+        <InspectorSection label="Order">
+          <Card>
+            {tickets.map((entry, index) => (
+              <div
+                key={entry.id}
+                className="grid grid-cols-order gap-2 items-center px-2.5 h-[30px] border-b border-line-soft last:border-b-0"
+              >
+                <span className="font-mono text-[10.5px] text-ink-mute">{index + 1}</span>
+                <StatusChip status={entry.status} />
+                <span className="font-mono text-[11px] text-ink-faint overflow-hidden text-ellipsis whitespace-nowrap">
+                  {entry.id}
+                </span>
+                <span className="text-[12px] text-ink-soft overflow-hidden text-ellipsis whitespace-nowrap">
+                  {entry.title}
+                </span>
+                <button className="text-ink-mute hover:text-ink cursor-pointer">
+                  <ChevronDown size={12} />
+                </button>
+              </div>
+            ))}
+          </Card>
+        </InspectorSection>
+      </InspectorBody>
+      <InspectorActions>
+        <Btn variant="primary" onClick={onSendHandoff}>
+          <Sparkles size={11} /> Save & copy <span className="kbd bg-[oklch(0_0_0_/_0.22)] border-[oklch(0_0_0_/_0.3)] text-accent-ink">⌘↵</span>
+        </Btn>
+        <Btn onClick={() => navigator.clipboard?.writeText(prompt).catch(() => undefined)}>
+          <Copy size={11} /> Copy prompt
+        </Btn>
+        <Btn variant="ghost">Save as preset</Btn>
+      </InspectorActions>
+    </>
+  );
+}
+
+function InspectorThread({ project, ticket }: { project: WaymarkProject; ticket: Ticket | null }) {
+  const linked = ticket
+    ? project.threads.find((thread) => ticket.linked_threads?.includes(thread.id))
+    : null;
+  const fallback = project.threads[0] ?? null;
+  const thread: ThreadRecord | null = linked ?? fallback;
+
+  if (!thread) return <InspectorEmpty>No threads linked yet.</InspectorEmpty>;
+
+  return (
+    <>
+      <InspectorBody>
+        <InspectorHead
+          eyebrow={<span className="text-[10.5px] text-ink-faint tracking-[0.08em] uppercase">Linked thread</span>}
+          title={thread.title}
+          meta={
+            <div className="flex items-center gap-1.5 font-mono text-[10px] text-ink-mute whitespace-nowrap overflow-hidden flex-wrap">
+              <span>● {thread.provider}</span>
+              <span>·</span>
+              <span>{thread.status}</span>
+              {thread.url ? (
+                <>
+                  <span>·</span>
+                  <span className="overflow-hidden text-ellipsis min-w-0">{thread.url}</span>
+                </>
+              ) : null}
+            </div>
+          }
+        />
+
+        <InspectorSection
+          label={
+            <>
+              Summary <span className="text-ink-mute normal-case tracking-normal">· file</span>
+            </>
+          }
+        >
+          <div className="text-[12.5px] text-ink-soft leading-[1.55]">
+            {thread.summary_file ? <code>{thread.summary_file}</code> : <span className="text-ink-mute">No summary file.</span>}
+          </div>
+        </InspectorSection>
+
+        <InspectorSection label="Linked tickets">
+          <Card>
+            {(thread.linked_tickets ?? []).length === 0 ? (
+              <EmptyRow>No linked tickets.</EmptyRow>
+            ) : (
+              (thread.linked_tickets ?? []).map((id) => {
+                const linkedTicket = project.tickets.find((candidate) => candidate.id === id);
+                return (
+                  <LinkRow
+                    key={id}
+                    kind="ticket"
+                    identifier={id}
+                    title={linkedTicket?.title ?? "—"}
+                  />
+                );
+              })
+            )}
+          </Card>
+        </InspectorSection>
+      </InspectorBody>
+      <InspectorActions>
+        <Btn>Continue thread</Btn>
+        <Btn variant="ghost">Re-summarize</Btn>
+      </InspectorActions>
+    </>
+  );
+}
+
+/* ------------------------------ empty state ----------------------------- */
+
+function EmptyState({
+  tauri,
+  rootPath,
+  onRootPath,
+  onSeed,
+  onRefresh,
+}: {
+  tauri: boolean;
+  rootPath: string;
+  onRootPath: (value: string) => void;
+  onSeed: () => void;
+  onRefresh: () => void;
+}) {
+  return (
+    <div className="grid place-items-center gap-3.5 py-16 px-8 text-center text-ink-faint">
+      <Triangle size={28} className="text-accent" fill="currentColor" strokeWidth={0} />
+      <h2 className="m-0 text-[18px] font-semibold tracking-[-0.01em] text-ink">Open a Waymark workspace</h2>
+      <p className="m-0 max-w-[460px] text-[13px] leading-[1.55]">
+        Waymark reads <code>waymark.yaml</code> and per-project Markdown/YAML from a folder you choose. Point at an existing
+        workspace, or seed a sample to explore the cockpit.
+      </p>
+      <div className="flex items-center gap-2 h-[26px] px-2 rounded-[3px] bg-surface-2 border border-line w-[420px] max-w-full font-mono text-[11px] text-ink-soft">
+        <span className="w-1.5 h-1.5 rounded-full bg-ink-mute shrink-0" />
+        <input
+          value={rootPath}
+          onChange={(event) => onRootPath(event.target.value)}
+          spellCheck={false}
+          className="flex-1 min-w-0 bg-transparent border-0 outline-0 p-0"
+        />
+      </div>
+      <div className="flex gap-2">
+        <Btn onClick={onRefresh}>
+          <RefreshCw size={13} /> Open
+        </Btn>
+        <Btn variant="primary" onClick={onSeed} disabled={!tauri}>
+          <Sparkles size={11} /> Seed sample
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------- capture ------------------------------- */
+
+function CaptureModal({
+  project,
+  onClose,
+  onCreated,
+}: {
+  project: WaymarkProject;
+  onClose: () => void;
+  onCreated: (title: string, status: TicketStatus, summary: string) => Promise<void>;
+}) {
+  const [title, setTitle] = useState("");
+  const [summary, setSummary] = useState("");
+  const [status, setStatus] = useState<TicketStatus>("now");
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-[oklch(0_0_0_/_0.45)] z-40" onClick={onClose} />
+      <form
+        onSubmit={async (event) => {
+          event.preventDefault();
+          if (!title.trim()) return;
+          setBusy(true);
+          await onCreated(title.trim(), status, summary.trim());
+          setBusy(false);
+        }}
+        className="fixed top-24 left-1/2 -translate-x-1/2 w-[540px] max-w-[calc(100vw-32px)] bg-surface-2 border border-line rounded-[5px] p-4 flex flex-col gap-2.5 shadow-[0_18px_60px_oklch(0_0_0_/_0.6)] z-50"
+      >
+        <h3 className="m-0 text-[13px] font-semibold">Capture into {project.config.name}</h3>
+        <div className="grid grid-cols-[1fr_140px] gap-2">
+          <input
+            placeholder="Ticket title"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            autoFocus
+            className="w-full bg-surface-input-2 border border-line-soft text-ink rounded-[3px] px-2 py-1.5 text-[12.5px] outline-0 focus:border-accent-deep"
+          />
+          <select
+            value={status}
+            onChange={(event) => setStatus(event.target.value as TicketStatus)}
+            className="w-full bg-surface-input-2 border border-line-soft text-ink rounded-[3px] px-2 py-1.5 text-[12.5px] outline-0 focus:border-accent-deep"
+          >
+            <option value="now">Now</option>
+            <option value="next">Next</option>
+            <option value="later">Later</option>
+            <option value="blocked">Blocked</option>
+            <option value="idea">Idea</option>
+          </select>
+        </div>
+        <textarea
+          placeholder="Short summary (optional)"
+          value={summary}
+          onChange={(event) => setSummary(event.target.value)}
+          className="w-full bg-surface-input-2 border border-line-soft text-ink rounded-[3px] px-2 py-1.5 outline-0 focus:border-accent-deep min-h-[70px] resize-y leading-[1.45] font-mono text-[11.5px]"
+        />
+        <div className="flex gap-2 justify-end">
+          <Btn type="button" variant="ghost" onClick={onClose}>Cancel</Btn>
+          <Btn type="submit" variant="primary" disabled={busy || !title.trim()}>
+            <Plus size={11} /> Capture <span className="kbd bg-[oklch(0_0_0_/_0.22)] border-[oklch(0_0_0_/_0.3)] text-accent-ink">⌘↵</span>
+          </Btn>
+        </div>
+      </form>
+    </>
+  );
+}
