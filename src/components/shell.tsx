@@ -350,9 +350,14 @@ function ProjectRow({
   onClick: () => void;
 }) {
   const dot = kind === "ok" ? "bg-lane-done" : kind === "warn" ? "bg-warn" : "bg-ink-mute";
+  const activeLabel = `${active} active ticket${active === 1 ? "" : "s"}`;
+  const statusLabel = kind === "warn" ? "has warnings" : kind === "ok" ? "healthy" : "idle";
+  const description = `${project.config.name}: ${activeLabel} in Now or Next, ${statusLabel}.`;
   return (
     <button
       onClick={onClick}
+      aria-label={description}
+      title={description}
       className={cx(
         "grid grid-cols-proj items-center gap-2 h-[30px] px-2 rounded-[3px] cursor-pointer w-full text-left",
         selected
@@ -369,7 +374,16 @@ function ProjectRow({
       <span className="text-[12.5px] truncate min-w-0">{project.config.name}</span>
       <span className="flex items-center gap-1 shrink-0">
         <span className={cx("w-[5px] h-[5px] rounded-full", dot)} />
-        <span className="font-mono text-[10px] text-ink-mute">{active}</span>
+        <span
+          className={cx(
+            "font-mono text-[10px] leading-[16px] px-1.5 rounded-[3px] border",
+            selected
+              ? "border-line-soft bg-surface-2 text-ink-soft"
+              : "border-transparent bg-surface-3 text-ink-mute",
+          )}
+        >
+          {active} active
+        </span>
       </span>
     </button>
   );

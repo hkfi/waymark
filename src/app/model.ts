@@ -58,6 +58,8 @@ export const PROJECT_PALETTE = [
   "oklch(0.62 0.005 250)",
 ];
 export const defaultWorkspacePath = "/Users/hirokifuruichi/code/waymark/sample-workspace";
+export const LAST_WORKSPACE_PATH_KEY = "waymark:last-workspace-path";
+export const SELECTED_PROJECT_PREFIX = "waymark:selected-project:";
 export const LEFT_WIDTH_KEY = "waymark:left-sidebar-width";
 export const RIGHT_WIDTH_KEY = "waymark:right-inspector-width";
 export const LEFT_WIDTH_DEFAULT = 240;

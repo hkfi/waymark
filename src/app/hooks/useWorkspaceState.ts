@@ -8,17 +8,31 @@ import {
   createWorkspace as createWorkspaceFiles,
   loadWorkspace,
 } from "../../workspace";
-import { defaultWorkspacePath } from "../model";
+import { defaultWorkspacePath, LAST_WORKSPACE_PATH_KEY, SELECTED_PROJECT_PREFIX } from "../model";
 
 type FeedbackApi = {
   setError: (value: string | null) => void;
   setNotice: (value: string | null) => void;
 };
 
+function storedWorkspacePath() {
+  if (typeof window === "undefined") return defaultWorkspacePath;
+  return window.localStorage.getItem(LAST_WORKSPACE_PATH_KEY) || defaultWorkspacePath;
+}
+
+function selectedProjectKey(rootPath: string) {
+  return `${SELECTED_PROJECT_PREFIX}${rootPath}`;
+}
+
+function storedSelectedSlug(rootPath: string) {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(selectedProjectKey(rootPath));
+}
+
 export function useWorkspaceState({ setError, setNotice }: FeedbackApi) {
-  const [rootPath, setRootPath] = useState(defaultWorkspacePath);
+  const [rootPath, setRootPath] = useState(storedWorkspacePath);
   const [data, setData] = useState<WorkspaceData | null>(null);
-  const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
+  const [selectedSlug, setSelectedSlug] = useState<string | null>(() => storedSelectedSlug(storedWorkspacePath()));
 
   const selectedProject = useMemo<WaymarkProject | null>(() => {
     if (!data) return null;
@@ -45,7 +59,15 @@ export function useWorkspaceState({ setError, setNotice }: FeedbackApi) {
 
         const next = await loadWorkspace(path);
         setData(next);
-        setSelectedSlug((current) => current ?? next.projects[0]?.config.slug ?? null);
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(LAST_WORKSPACE_PATH_KEY, path);
+        }
+        setSelectedSlug((current) => {
+          const persisted = storedSelectedSlug(path);
+          const candidate = current && next.projects.some((project) => project.config.slug === current) ? current : persisted;
+          if (candidate && next.projects.some((project) => project.config.slug === candidate)) return candidate;
+          return next.projects[0]?.config.slug ?? null;
+        });
         setNotice(`Reloaded ${next.config.name}.`);
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
@@ -64,6 +86,7 @@ export function useWorkspaceState({ setError, setNotice }: FeedbackApi) {
       const path = await chooseDirectory();
       if (!path) return;
       setRootPath(path);
+      setSelectedSlug(storedSelectedSlug(path));
       await refresh(path);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -85,6 +108,7 @@ export function useWorkspaceState({ setError, setNotice }: FeedbackApi) {
       try {
         await createWorkspaceFiles(path, name);
         setRootPath(path);
+        setSelectedSlug(null);
         await refresh(path);
         setNotice(`Created workspace at ${path}.`);
       } catch (caught) {
@@ -110,6 +134,18 @@ export function useWorkspaceState({ setError, setNotice }: FeedbackApi) {
     },
     [data, refresh, rootPath, setError, setNotice],
   );
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && data) {
+      window.localStorage.setItem(LAST_WORKSPACE_PATH_KEY, rootPath);
+    }
+  }, [data, rootPath]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && data && selectedSlug) {
+      window.localStorage.setItem(selectedProjectKey(rootPath), selectedSlug);
+    }
+  }, [data, rootPath, selectedSlug]);
 
   useEffect(() => {
     if (isTauri()) {
