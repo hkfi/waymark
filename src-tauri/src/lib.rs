@@ -64,6 +64,39 @@ fn open_path(path: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn choose_directory() -> Result<Option<String>, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let output = Command::new("osascript")
+            .arg("-e")
+            .arg("POSIX path of (choose folder with prompt \"Open Waymark workspace\")")
+            .output()
+            .map_err(|error| error.to_string())?;
+
+        if !output.status.success() {
+            return Ok(None);
+        }
+
+        let path = String::from_utf8(output.stdout)
+            .map_err(|error| error.to_string())?
+            .trim()
+            .trim_end_matches('/')
+            .to_string();
+
+        if path.is_empty() {
+            return Ok(None);
+        }
+
+        return Ok(Some(path));
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("Folder picker is not available on this platform yet.".to_string())
+    }
+}
+
 fn expand_tilde(path: &str) -> String {
     if path == "~" {
         return env::var("HOME").unwrap_or_else(|_| path.to_string());
@@ -86,7 +119,8 @@ pub fn run() {
             write_text_file,
             create_dir_all,
             list_dir,
-            open_path
+            open_path,
+            choose_directory
         ])
         .run(tauri::generate_context!())
         .expect("error while running Waymark");

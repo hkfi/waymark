@@ -441,12 +441,28 @@ export async function createSampleWorkspace(rootPath: string) {
   await writeTextFile(joinPath(rootPath, "projects", "openclaw", "threads.yaml"), dumpYaml({ version: 1, threads: [] }));
 }
 
+export async function createWorkspace(rootPath: string, name = "Waymark Workspace") {
+  const configPath = joinPath(rootPath, "waymark.yaml");
+  if (await pathExists(configPath)) {
+    throw new Error(`Workspace already exists at ${configPath}`);
+  }
+  await createDirAll(joinPath(rootPath, "projects"));
+  await writeTextFile(
+    configPath,
+    dumpYaml({ version: 1, name, projects_dir: "projects" }),
+  );
+}
+
 export async function saveTickets(project: WaymarkProject, tickets: Ticket[]) {
   await writeTextFile(joinPath(project.rootPath, "tickets.yaml"), dumpYaml({ version: 1, tickets }));
 }
 
 export async function saveThreads(project: WaymarkProject, threads: ThreadRecord[]) {
   await writeTextFile(joinPath(project.rootPath, "threads.yaml"), dumpYaml({ version: 1, threads }));
+}
+
+export async function saveLinks(project: WaymarkProject, links: LinkRecord[]) {
+  await writeTextFile(joinPath(project.rootPath, "links.yaml"), dumpYaml({ version: 1, links }));
 }
 
 export async function createNote(
@@ -477,6 +493,31 @@ export async function saveGeneratedPrompt(project: WaymarkProject, ticket: Ticke
   );
   await saveTickets(project, tickets);
   return promptPath;
+}
+
+export async function saveGeneratedPrompts(
+  project: WaymarkProject,
+  prompts: Array<{ ticket: Ticket; prompt: string }>,
+) {
+  const saved = await Promise.all(
+    prompts.map(async ({ ticket, prompt }) => {
+      const promptPath = `ai/prompts/${today()}-${ticket.id}.md`;
+      await writeTextFile(joinPath(project.rootPath, promptPath), prompt);
+      return { ticketId: ticket.id, promptPath };
+    }),
+  );
+
+  const promptByTicket = new Map(saved.map((entry) => [entry.ticketId, entry.promptPath]));
+  const tickets = project.tickets.map((ticket) => {
+    const promptPath = promptByTicket.get(ticket.id);
+    if (!promptPath) return ticket;
+    return {
+      ...ticket,
+      generated_prompts: Array.from(new Set([...(ticket.generated_prompts ?? []), promptPath])),
+    };
+  });
+  await saveTickets(project, tickets);
+  return saved;
 }
 
 export function buildPrompt(project: WaymarkProject, ticket: Ticket, selectedContext: string[]) {

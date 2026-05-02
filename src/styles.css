@@ -67,6 +67,57 @@
   --grid-template-columns-proj: 16px minmax(0, 1fr) auto;
 }
 
+.app-titlebar {
+  grid-template-columns: var(--shell-left, 240px) minmax(0, 1fr) var(--shell-right, 380px);
+}
+
+.app-shell {
+  grid-template-columns: var(--shell-left, 240px) 6px minmax(0, 1fr) 6px var(--shell-right, 380px);
+}
+
+.app-titlebar {
+  pointer-events: none;
+}
+
+.app-titlebar .app-titlebar-actions,
+.app-titlebar .app-window-dots {
+  pointer-events: auto;
+}
+
+.pane-resizer {
+  position: relative;
+  z-index: 3;
+  width: 6px;
+  min-width: 6px;
+  cursor: col-resize;
+  background: var(--color-surface);
+  border-inline: 1px solid transparent;
+}
+
+.pane-resizer::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: 2px;
+  width: 2px;
+  background: transparent;
+}
+
+.pane-resizer:hover::after,
+.pane-resizer:focus-visible::after,
+.is-resizing-pane .pane-resizer::after {
+  background: var(--color-accent);
+}
+
+.pane-resizer:focus-visible {
+  outline: 0;
+}
+
+.is-resizing-pane {
+  cursor: col-resize;
+  user-select: none;
+}
+
 @layer base {
   *, *::before, *::after { box-sizing: border-box; }
   html, body, #root { margin: 0; height: 100%; }
@@ -113,4 +164,43 @@
   .status-chip.blocked { background: oklch(0.70 0.16 25 / 0.16); color: oklch(0.86 0.10 25); }
   .status-chip.done    { background: oklch(0.74 0.13 150 / 0.14); color: oklch(0.86 0.07 150); }
   .status-chip.idea    { background: oklch(0.74 0.12 295 / 0.14); color: oklch(0.86 0.07 295); }
+}
+
+@media (max-width: 900px) {
+  .app-titlebar {
+    grid-template-columns: minmax(0, 1fr);
+    pointer-events: auto;
+  }
+
+  .app-window-dots,
+  .app-titlebar-actions,
+  .sidebar-shell,
+  .inspector-shell,
+  .pane-resizer {
+    display: none;
+  }
+
+  .app-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-main > :first-child {
+    min-height: 46px;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-main h1 {
+    max-width: 52%;
+  }
+
+  .app-main > :nth-child(2) {
+    flex-wrap: wrap;
+    align-content: flex-start;
+    height: auto;
+  }
+
+  .app-main > :nth-child(2) > :first-child {
+    flex-basis: 100%;
+  }
 }

@@ -37,3 +37,7 @@ export async function listDir(path: string) {
 export async function openPath(path: string) {
   return invoke<void>("open_path", { path });
 }
+
+export async function chooseDirectory() {
+  return invoke<string | null>("choose_directory");
+}

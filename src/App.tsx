@@ -2,9 +2,9 @@ import {
   AlertTriangle,
   ArrowRight,
   Check,
-  ChevronDown,
   Copy,
   FileText,
+  FolderOpen,
   GitBranch,
   Inbox,
   LayoutGrid,
@@ -25,13 +25,19 @@ import {
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ButtonHTMLAttributes,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  type RefObject,
   type ReactNode,
 } from "react";
-import { isTauri, openPath } from "./tauri";
+import { chooseDirectory, isTauri, openPath } from "./tauri";
 import type {
+  LinkRecord,
   NoteRecord,
+  Priority,
   ThreadRecord,
   Ticket,
   TicketStatus,
@@ -42,18 +48,52 @@ import {
   buildDemoWorkspace,
   buildPrompt,
   createSampleWorkspace,
+  createWorkspace,
+  createNote,
   loadWorkspace,
-  saveGeneratedPrompt,
+  saveGeneratedPrompts,
+  saveLinks,
   saveTickets,
+  saveThreads,
   ticketWarnings,
 } from "./workspace";
 
 /* ----------------------------- domain types ----------------------------- */
 
-type NavId = "home" | "queue" | "decisions" | "threads" | "ideas" | "inbox";
+type NavId = "home" | "queue" | "decisions" | "threads" | "ideas" | "files" | "inbox";
 type MainTab = "overview" | "tickets" | "decisions" | "threads" | "files";
-type InspectorMode = "ticket" | "prompt" | "thread";
+type InspectorMode = "ticket" | "prompt" | "thread" | "note";
 type Lane = "now" | "next" | "later" | "blocked" | "done";
+type CaptureKind = "ticket" | "idea" | "decision" | "thread";
+type FileModalMode = "file" | "link";
+type CapturePayload =
+  | {
+      kind: "ticket";
+      title: string;
+      status: TicketStatus;
+      priority: Priority;
+      summary: string;
+      acceptanceCriteria: string;
+      linkedFiles: string;
+      linkedDecisions: string;
+      linkedThreads: string;
+    }
+  | {
+      kind: "idea" | "decision";
+      title: string;
+      summary: string;
+      body: string;
+      linkedTickets: string;
+    }
+  | {
+      kind: "thread";
+      title: string;
+      provider: ThreadRecord["provider"];
+      threadStatus: ThreadRecord["status"];
+      url: string;
+      summaryFile: string;
+      linkedTickets: string;
+    };
 
 const LANES_IN_QUEUE: Lane[] = ["now", "next", "blocked", "later"];
 const LANE_LABEL: Record<Lane, string> = {
@@ -71,6 +111,14 @@ const PROJECT_PALETTE = [
   "oklch(0.62 0.005 250)",
 ];
 const defaultWorkspacePath = "/Users/hirokifuruichi/code/waymark/sample-workspace";
+const LEFT_WIDTH_KEY = "waymark:left-sidebar-width";
+const RIGHT_WIDTH_KEY = "waymark:right-inspector-width";
+const LEFT_WIDTH_DEFAULT = 240;
+const RIGHT_WIDTH_DEFAULT = 380;
+const LEFT_WIDTH_MIN = 188;
+const LEFT_WIDTH_MAX = 360;
+const RIGHT_WIDTH_MIN = 300;
+const RIGHT_WIDTH_MAX = 560;
 
 /* -------------------------------- utils --------------------------------- */
 
@@ -94,10 +142,63 @@ function projectFile(project: WaymarkProject, ticket: Ticket) {
   if (ticket.linked_files?.length) return ticket.linked_files[0];
   return `${project.config.slug}/tickets/${ticket.id}.yaml`;
 }
+function resolveProjectPath(project: WaymarkProject, path: string) {
+  if (/^(https?:|file:|\/|~\/)/.test(path)) return path;
+  return `${project.rootPath}/${path}`;
+}
 function ticketHasFlag(ticket: Ticket, kind: "ac" | "decision" | "thread") {
   if (kind === "ac") return (ticket.acceptance_criteria?.length ?? 0) > 0;
   if (kind === "decision") return (ticket.linked_decisions?.length ?? 0) > 0;
   return (ticket.linked_threads?.length ?? 0) > 0;
+}
+function navToTab(id: NavId): MainTab {
+  if (id === "queue") return "tickets";
+  if (id === "decisions") return "decisions";
+  if (id === "threads") return "threads";
+  if (id === "files") return "files";
+  return id === "home" ? "overview" : "overview";
+}
+function tabToNav(id: MainTab): NavId {
+  if (id === "tickets") return "queue";
+  if (id === "decisions") return "decisions";
+  if (id === "threads") return "threads";
+  if (id === "files") return "files";
+  return "home";
+}
+function matchesSearch(values: Array<string | undefined | null>, search: string) {
+  const needle = search.trim().toLowerCase();
+  if (!needle) return true;
+  return values.some((value) => value?.toLowerCase().includes(needle));
+}
+function recordId(value: string) {
+  return (
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "") || `item-${Date.now()}`
+  );
+}
+function lines(value: string) {
+  return value
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+function storedWidth(key: string, fallback: number, min: number, max: number) {
+  if (typeof window === "undefined") return fallback;
+  const value = Number(window.localStorage.getItem(key));
+  if (!Number.isFinite(value)) return fallback;
+  return clamp(value, min, max);
+}
+function addPromptPath(ticket: Ticket, promptPath: string): Ticket {
+  return {
+    ...ticket,
+    generated_prompts: Array.from(new Set([...(ticket.generated_prompts ?? []), promptPath])),
+  };
 }
 function tokenEstimate(prompt: string) {
   return Math.max(120, Math.round(prompt.length / 4));
@@ -276,6 +377,7 @@ function DataRow({
   paddingX = 14,
   gap = 10,
   selected,
+  ariaLabel,
   className,
   onClick,
   children,
@@ -286,6 +388,7 @@ function DataRow({
   paddingX?: number;
   gap?: number;
   selected?: boolean;
+  ariaLabel?: string;
   className?: string;
   onClick?: () => void;
   children: ReactNode;
@@ -293,10 +396,19 @@ function DataRow({
   return (
     <div
       onClick={onClick}
+      onKeyDown={(event) => {
+        if (!onClick || (event.key !== "Enter" && event.key !== " ")) return;
+        event.preventDefault();
+        onClick();
+      }}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      aria-label={ariaLabel}
+      aria-selected={selected || undefined}
       className={cx(
         "grid items-center border-b border-line-soft last:border-b-0",
         cols,
-        onClick && "cursor-pointer hover:bg-surface-row-hover",
+        onClick && "cursor-pointer hover:bg-surface-row-hover focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent focus-visible:outline-offset-[-2px]",
         selected && "bg-surface-row-selected shadow-[inset_2px_0_0_var(--color-accent)]",
         className,
       )}
@@ -316,12 +428,25 @@ export default function App() {
   const [nav, setNav] = useState<NavId>("home");
   const [tab, setTab] = useState<MainTab>("overview");
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  const [selectedNotePath, setSelectedNotePath] = useState<string | null>(null);
   const [multi, setMulti] = useState<string[]>([]);
   const [inspectorMode, setInspectorMode] = useState<InspectorMode>("ticket");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [captureOpen, setCaptureOpen] = useState(false);
+  const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false);
+  const [editingTicketId, setEditingTicketId] = useState<string | null>(null);
+  const [fileModalMode, setFileModalMode] = useState<FileModalMode | null>(null);
   const [search, setSearch] = useState("");
+  const [gapsOnly, setGapsOnly] = useState(false);
+  const [leftWidth, setLeftWidth] = useState(() =>
+    storedWidth(LEFT_WIDTH_KEY, LEFT_WIDTH_DEFAULT, LEFT_WIDTH_MIN, LEFT_WIDTH_MAX),
+  );
+  const [rightWidth, setRightWidth] = useState(() =>
+    storedWidth(RIGHT_WIDTH_KEY, RIGHT_WIDTH_DEFAULT, RIGHT_WIDTH_MIN, RIGHT_WIDTH_MAX),
+  );
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const selectedProject = useMemo(() => {
     if (!workspace) return null;
@@ -337,14 +462,59 @@ export default function App() {
     return selectedProject.tickets.find((ticket) => ticket.id === selectedTicketId) ?? null;
   }, [selectedProject, selectedTicketId]);
 
+  const editingTicket = useMemo(() => {
+    if (!selectedProject || !editingTicketId) return null;
+    return selectedProject.tickets.find((ticket) => ticket.id === editingTicketId) ?? null;
+  }, [editingTicketId, selectedProject]);
+
+  const selectedThread = useMemo(() => {
+    if (!selectedProject || !selectedThreadId) return null;
+    return selectedProject.threads.find((thread) => thread.id === selectedThreadId) ?? null;
+  }, [selectedProject, selectedThreadId]);
+
+  const selectedNote = useMemo(() => {
+    if (!selectedProject || !selectedNotePath) return null;
+    return [...selectedProject.decisions, ...selectedProject.ideas].find((note) => note.path === selectedNotePath) ?? null;
+  }, [selectedNotePath, selectedProject]);
+
   async function refresh(path = rootPath) {
     setError(null);
     try {
+      if (!isTauri()) {
+        if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1") {
+          setWorkspace(buildDemoWorkspace());
+          setNotice("Reloaded demo workspace.");
+          return;
+        }
+        setNotice("Run Waymark through Tauri to reload a local workspace.");
+        return;
+      }
       const next = await loadWorkspace(path);
       setWorkspace(next);
       setSelectedSlug((current) => current ?? next.projects[0]?.config.slug ?? null);
+      setNotice(`Reloaded ${next.config.name}.`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }
+
+  function requestCreateWorkspace() {
+    setCreateWorkspaceOpen(true);
+    if (!isTauri()) {
+      setNotice("Run Waymark through Tauri to create a local workspace.");
+    }
+  }
+
+  async function handleCreateWorkspace(path: string, name: string) {
+    try {
+      await createWorkspace(path, name);
+      setRootPath(path);
+      await refresh(path);
+      setCreateWorkspaceOpen(false);
+      setNotice(`Created workspace at ${path}.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+      throw caught;
     }
   }
 
@@ -372,6 +542,8 @@ export default function App() {
   useEffect(() => {
     if (!selectedProject) {
       setSelectedTicketId(null);
+      setSelectedThreadId(null);
+      setSelectedNotePath(null);
       setMulti([]);
       return;
     }
@@ -382,6 +554,14 @@ export default function App() {
       if (current && selectedProject.tickets.some((ticket) => ticket.id === current)) return current;
       return selectedProject.tickets[0]?.id ?? null;
     });
+    setSelectedThreadId((current) => {
+      if (current && selectedProject.threads.some((thread) => thread.id === current)) return current;
+      return selectedProject.threads[0]?.id ?? null;
+    });
+    setSelectedNotePath((current) => {
+      if (current && [...selectedProject.decisions, ...selectedProject.ideas].some((note) => note.path === current)) return current;
+      return selectedProject.decisions[0]?.path ?? selectedProject.ideas[0]?.path ?? null;
+    });
   }, [selectedProject]);
 
   useEffect(() => {
@@ -390,10 +570,81 @@ export default function App() {
     return () => window.clearTimeout(id);
   }, [notice]);
 
+  useEffect(() => {
+    function handleKeydown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    }
+    window.addEventListener("keydown", handleKeydown);
+    return () => window.removeEventListener("keydown", handleKeydown);
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(LEFT_WIDTH_KEY, String(leftWidth));
+  }, [leftWidth]);
+
+  useEffect(() => {
+    window.localStorage.setItem(RIGHT_WIDTH_KEY, String(rightWidth));
+  }, [rightWidth]);
+
+  function beginResize(side: "left" | "right", event: ReactPointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startLeft = leftWidth;
+    const startRight = rightWidth;
+
+    function handleMove(moveEvent: PointerEvent) {
+      const delta = moveEvent.clientX - startX;
+      if (side === "left") {
+        setLeftWidth(clamp(startLeft + delta, LEFT_WIDTH_MIN, LEFT_WIDTH_MAX));
+        return;
+      }
+      setRightWidth(clamp(startRight - delta, RIGHT_WIDTH_MIN, RIGHT_WIDTH_MAX));
+    }
+
+    function handleUp() {
+      document.body.classList.remove("is-resizing-pane");
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    }
+
+    document.body.classList.add("is-resizing-pane");
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp, { once: true });
+  }
+
   function toggleMulti(id: string) {
     setMulti((current) =>
       current.includes(id) ? current.filter((value) => value !== id) : [...current, id],
     );
+  }
+
+  function handleNav(next: NavId) {
+    setNav(next);
+    setTab(navToTab(next));
+  }
+
+  function handleTab(next: MainTab) {
+    setTab(next);
+    setNav(tabToNav(next));
+  }
+
+  async function handleChooseWorkspace() {
+    if (!isTauri()) {
+      setNotice("Run Waymark through Tauri to choose a workspace folder.");
+      return;
+    }
+
+    try {
+      const path = await chooseDirectory();
+      if (!path) return;
+      setRootPath(path);
+      await refresh(path);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
   }
 
   async function handleHandoff() {
@@ -406,22 +657,48 @@ export default function App() {
       return;
     }
     setInspectorMode("prompt");
-    try {
-      const saved: string[] = [];
-      for (const ticket of tickets) {
-        const prompt = buildPrompt(project, ticket, ["repos", "files", "decisions", "threads", "links"]);
-        saved.push(await saveGeneratedPrompt(project, ticket, prompt));
-      }
-      const promptForCopy = tickets
-        .map((ticket) => buildPrompt(project, ticket, ["repos", "files", "decisions", "threads", "links"]))
-        .join("\n\n---\n\n");
+    const promptForCopy = tickets
+      .map((ticket) => buildPrompt(project, ticket, ["repos", "files", "decisions", "threads", "links"]))
+      .join("\n\n---\n\n");
+    if (!isTauri()) {
       try {
         await navigator.clipboard.writeText(promptForCopy);
       } catch {
         /* clipboard not always available */
       }
+      setNotice("Copied a demo handoff prompt. Run through Tauri to save prompt files.");
+      return;
+    }
+    try {
+      const prompts = tickets.map((ticket) => ({
+        ticket,
+        prompt: buildPrompt(project, ticket, ["repos", "files", "decisions", "threads", "links"]),
+      }));
+      const saved = await saveGeneratedPrompts(project, prompts);
+      try {
+        await navigator.clipboard.writeText(promptForCopy);
+      } catch {
+        /* clipboard not always available */
+      }
+      const promptByTicket = new Map(saved.map((entry) => [entry.ticketId, entry.promptPath]));
+      setWorkspace((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          projects: current.projects.map((candidate) =>
+            candidate.config.slug === project.config.slug
+              ? {
+                  ...candidate,
+                  tickets: candidate.tickets.map((ticket) => {
+                    const promptPath = promptByTicket.get(ticket.id);
+                    return promptPath ? addPromptPath(ticket, promptPath) : ticket;
+                  }),
+                }
+              : candidate,
+          ),
+        };
+      });
       setNotice(`Saved ${saved.length} prompt${saved.length === 1 ? "" : "s"} and copied to clipboard.`);
-      await refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
@@ -429,20 +706,153 @@ export default function App() {
 
   async function handleStatusChange(ticket: Ticket, status: TicketStatus) {
     if (!selectedProject) return;
-    await saveTickets(
-      selectedProject,
-      selectedProject.tickets.map((candidate) =>
-        candidate.id === ticket.id ? { ...candidate, status } : candidate,
-      ),
-    );
-    setNotice(`Moved ${ticket.title} to ${LANE_LABEL[status as Lane] ?? status}.`);
-    await refresh();
+    if (!isTauri()) {
+      setNotice("Run Waymark through Tauri to update local ticket YAML.");
+      return;
+    }
+    try {
+      await saveTickets(
+        selectedProject,
+        selectedProject.tickets.map((candidate) =>
+          candidate.id === ticket.id ? { ...candidate, status } : candidate,
+        ),
+      );
+      setNotice(`Moved ${ticket.title} to ${LANE_LABEL[status as Lane] ?? status}.`);
+      await refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
   }
 
+  async function handleSaveTicket(ticket: Ticket) {
+    if (!selectedProject) return;
+    if (!isTauri()) {
+      setNotice("Run Waymark through Tauri to edit local ticket YAML.");
+      return;
+    }
+    try {
+      await saveTickets(
+        selectedProject,
+        selectedProject.tickets.map((candidate) => (candidate.id === ticket.id ? ticket : candidate)),
+      );
+      setNotice(`Updated ${ticket.title}.`);
+      setEditingTicketId(null);
+      await refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }
+
+  async function handleCapture(payload: CapturePayload) {
+    if (!selectedProject) return;
+    if (!isTauri()) {
+      setNotice("Run Waymark through Tauri to capture into YAML/Markdown.");
+      return;
+    }
+
+    try {
+      if (payload.kind === "ticket") {
+        const ticket: Ticket = {
+          id: recordId(payload.title),
+          title: payload.title,
+          status: payload.status,
+          priority: payload.priority,
+          summary: payload.summary,
+          acceptance_criteria: lines(payload.acceptanceCriteria),
+          linked_files: lines(payload.linkedFiles),
+          linked_decisions: lines(payload.linkedDecisions),
+          linked_threads: lines(payload.linkedThreads),
+          generated_prompts: [],
+        };
+        await saveTickets(selectedProject, [...selectedProject.tickets, ticket]);
+      } else if (payload.kind === "idea" || payload.kind === "decision") {
+        await createNote(
+          selectedProject,
+          payload.kind,
+          payload.title,
+          payload.summary || payload.body || "Captured from Waymark.",
+          lines(payload.linkedTickets),
+        );
+      } else if (payload.kind === "thread") {
+        const thread: ThreadRecord = {
+          id: recordId(payload.title),
+          provider: payload.provider,
+          title: payload.title,
+          status: payload.threadStatus,
+          url: payload.url.trim() || null,
+          summary_file: payload.summaryFile.trim() || undefined,
+          linked_tickets: lines(payload.linkedTickets),
+        };
+        await saveThreads(selectedProject, [...selectedProject.threads, thread]);
+      }
+
+      setNotice(`Captured ${payload.title}.`);
+      setCaptureOpen(false);
+      await refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }
+
+  async function handleAddFile(ticketId: string, path: string) {
+    if (!selectedProject) return;
+    if (!isTauri()) {
+      setNotice("Run Waymark through Tauri to add linked files.");
+      return;
+    }
+    const cleanPath = path.trim();
+    if (!cleanPath) return;
+    try {
+      await saveTickets(
+        selectedProject,
+        selectedProject.tickets.map((ticket) =>
+          ticket.id === ticketId
+            ? { ...ticket, linked_files: Array.from(new Set([...(ticket.linked_files ?? []), cleanPath])) }
+            : ticket,
+        ),
+      );
+      setNotice(`Linked ${cleanPath}.`);
+      setFileModalMode(null);
+      await refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }
+
+  async function handleAddLink(link: LinkRecord) {
+    if (!selectedProject) return;
+    if (!isTauri()) {
+      setNotice("Run Waymark through Tauri to add links.");
+      return;
+    }
+    try {
+      await saveLinks(selectedProject, [...selectedProject.links.filter((item) => item.id !== link.id), link]);
+      setNotice(`Added ${link.label}.`);
+      setFileModalMode(null);
+      await refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }
+
+  const shellStyle = {
+    "--shell-left": `${leftWidth}px`,
+    "--shell-right": `${rightWidth}px`,
+  } as CSSProperties;
+
   return (
-    <div className="w-screen h-screen bg-surface grid grid-rows-[36px_1fr] overflow-hidden">
-      <Titlebar workspace={workspace} project={selectedProject} rootPath={rootPath} />
-      <div className="grid grid-cols-shell xl:grid-cols-shell-wide h-full min-h-0 min-w-0 overflow-hidden">
+    <div className="app-frame w-screen h-screen bg-surface grid grid-rows-[36px_1fr] overflow-hidden">
+      <Titlebar
+        workspace={workspace}
+        project={selectedProject}
+        rootPath={rootPath}
+        onSettings={() => setNotice("Settings are file-native for now: edit the workspace YAML and reload.")}
+        style={shellStyle}
+      />
+      <div
+        className="app-shell grid grid-cols-shell xl:grid-cols-shell-wide h-full min-h-0 min-w-0 overflow-hidden"
+        style={shellStyle}
+      >
         <Sidebar
           workspace={workspace}
           rootPath={rootPath}
@@ -450,20 +860,44 @@ export default function App() {
           selectedSlug={selectedProject?.config.slug ?? null}
           onSelectProject={setSelectedSlug}
           nav={nav}
-          onNav={setNav}
+          onNav={handleNav}
           onRefresh={() => refresh()}
           onSeed={handleSeed}
+          onCreateWorkspace={requestCreateWorkspace}
+          onChooseWorkspace={handleChooseWorkspace}
+          onRequestProject={() =>
+            setNotice("Add projects by creating a projects/<slug>/project.yaml folder, then reload.")
+          }
         />
-        <main className="bg-surface flex flex-col min-w-0 min-h-0 overflow-hidden">
+        <PaneResizeHandle
+          side="left"
+          value={leftWidth}
+          min={LEFT_WIDTH_MIN}
+          max={LEFT_WIDTH_MAX}
+          onPointerDown={(event) => beginResize("left", event)}
+          onReset={() => setLeftWidth(LEFT_WIDTH_DEFAULT)}
+        />
+        <main className="app-main bg-surface flex flex-col min-w-0 min-h-0 overflow-hidden">
           <MainHeader
             project={selectedProject}
             workspace={workspace}
             tab={tab}
-            onTab={setTab}
+            onTab={handleTab}
+            selectedTicket={selectedTicket}
+            selectedCount={multi.length}
             handoffDisabled={!selectedProject || (!selectedTicket && multi.length === 0)}
             search={search}
             onSearch={setSearch}
-            onCapture={() => setCaptureOpen(true)}
+            searchInputRef={searchInputRef}
+            gapsOnly={gapsOnly}
+            onToggleGaps={() => setGapsOnly((current) => !current)}
+            onCapture={() => {
+              if (!isTauri()) {
+                setNotice("Run Waymark through Tauri to capture tickets into YAML.");
+                return;
+              }
+              setCaptureOpen(true);
+            }}
             onSendHandoff={handleHandoff}
           />
           <div className="flex-1 min-h-0 overflow-y-auto px-[18px] pt-3.5 pb-7">
@@ -481,8 +915,10 @@ export default function App() {
                 tauri={isTauri()}
                 rootPath={rootPath}
                 onRootPath={setRootPath}
+                onChooseWorkspace={handleChooseWorkspace}
                 onSeed={handleSeed}
                 onRefresh={() => refresh()}
+                onCreateWorkspace={requestCreateWorkspace}
               />
             ) : !selectedProject ? (
               <div className="grid place-items-center gap-3.5 py-16 px-8 text-center text-ink-faint">
@@ -495,34 +931,68 @@ export default function App() {
                 </p>
               </div>
             ) : (
-              <>
-                <Stats project={selectedProject} />
-                <Queue
-                  project={selectedProject}
-                  selectedKey={selectedTicketId}
-                  onSelect={(ticket) => {
-                    setSelectedTicketId(ticket.id);
-                    setInspectorMode("ticket");
-                  }}
-                  multi={multi}
-                  toggleMulti={toggleMulti}
-                  search={search}
-                />
-                <Decisions decisions={selectedProject.decisions} />
-                <IdeasAndActivity project={selectedProject} workspace={workspace} />
-              </>
+              <CockpitContent
+                nav={nav}
+                tab={tab}
+                project={selectedProject}
+                workspace={workspace}
+                selectedTicketId={selectedTicketId}
+                selectedTicket={selectedTicket}
+                onSelectTicket={(ticket) => {
+                  setSelectedTicketId(ticket.id);
+                  setInspectorMode("ticket");
+                }}
+                onSelectThread={(thread) => {
+                  setSelectedThreadId(thread.id);
+                  setInspectorMode("thread");
+                }}
+                onSelectNote={(note) => {
+                  setSelectedNotePath(note.path);
+                  setInspectorMode("note");
+                }}
+                multi={multi}
+                toggleMulti={toggleMulti}
+                search={search}
+                gapsOnly={gapsOnly}
+                onNav={handleNav}
+                onAddFile={() => {
+                  if (!isTauri()) {
+                    setNotice("Run Waymark through Tauri to add file context.");
+                    return;
+                  }
+                  setFileModalMode("file");
+                }}
+                onAddLink={() => {
+                  if (!isTauri()) {
+                    setNotice("Run Waymark through Tauri to add links.");
+                    return;
+                  }
+                  setFileModalMode("link");
+                }}
+              />
             )}
           </div>
         </main>
+        <PaneResizeHandle
+          side="right"
+          value={rightWidth}
+          min={RIGHT_WIDTH_MIN}
+          max={RIGHT_WIDTH_MAX}
+          onPointerDown={(event) => beginResize("right", event)}
+          onReset={() => setRightWidth(RIGHT_WIDTH_DEFAULT)}
+        />
         <Inspector
           mode={inspectorMode}
           onMode={setInspectorMode}
           project={selectedProject}
           ticket={selectedTicket}
+          thread={selectedThread}
+          note={selectedNote}
           multi={multi}
           workspace={workspace}
           onSendHandoff={handleHandoff}
           onStatus={handleStatusChange}
+          onEditTicket={(ticket) => setEditingTicketId(ticket.id)}
         />
       </div>
 
@@ -530,29 +1000,32 @@ export default function App() {
         <CaptureModal
           project={selectedProject}
           onClose={() => setCaptureOpen(false)}
-          onCreated={async (title, status, summary) => {
-            const id = title
-              .trim()
-              .toLowerCase()
-              .replace(/[^a-z0-9]+/g, "-")
-              .replace(/(^-|-$)/g, "");
-            const ticket: Ticket = {
-              id: id || `ticket-${Date.now()}`,
-              title,
-              status,
-              priority: "medium",
-              summary,
-              acceptance_criteria: [],
-              linked_files: [],
-              linked_decisions: [],
-              linked_threads: [],
-              generated_prompts: [],
-            };
-            await saveTickets(selectedProject, [...selectedProject.tickets, ticket]);
-            setNotice(`Captured "${title}".`);
-            setCaptureOpen(false);
-            await refresh();
-          }}
+          onCreated={handleCapture}
+        />
+      ) : null}
+      {createWorkspaceOpen ? (
+        <CreateWorkspaceModal
+          tauri={isTauri()}
+          onClose={() => setCreateWorkspaceOpen(false)}
+          onChooseWorkspace={chooseDirectory}
+          onCreate={handleCreateWorkspace}
+        />
+      ) : null}
+      {editingTicket && selectedProject ? (
+        <TicketEditModal
+          ticket={editingTicket}
+          onClose={() => setEditingTicketId(null)}
+          onSave={handleSaveTicket}
+        />
+      ) : null}
+      {fileModalMode && selectedProject ? (
+        <FileLinkModal
+          mode={fileModalMode}
+          project={selectedProject}
+          selectedTicket={selectedTicket}
+          onClose={() => setFileModalMode(null)}
+          onAddFile={handleAddFile}
+          onAddLink={handleAddLink}
         />
       ) : null}
     </div>
@@ -568,7 +1041,7 @@ function Notice({ tone, children }: { tone: "ok" | "warn" | "err"; children: Rea
     err: "text-danger border-[oklch(0.70_0.16_25_/_0.3)] bg-[oklch(0.70_0.16_25_/_0.08)]",
   };
   return (
-    <div className={cx("text-[12px] px-3 py-2 rounded-[5px] border mb-3 flex items-center gap-2", tones[tone])}>
+    <div className={cx("text-[12px] px-3 py-2 rounded-[5px] border mb-3 flex items-start gap-2 flex-wrap", tones[tone])}>
       {children}
     </div>
   );
@@ -580,14 +1053,21 @@ function Titlebar({
   workspace,
   project,
   rootPath,
+  onSettings,
+  style,
 }: {
   workspace: WorkspaceData | null;
   project: WaymarkProject | null;
   rootPath: string;
+  onSettings: () => void;
+  style: CSSProperties;
 }) {
   return (
-    <div className="grid grid-cols-shell xl:grid-cols-shell-wide items-center border-b border-line bg-gradient-to-b from-[oklch(0.235_0.006_250)] to-[oklch(0.205_0.006_250)] select-none h-9 overflow-hidden">
-      <div className="flex gap-2 pl-3.5">
+    <div
+      className="app-titlebar grid grid-cols-shell xl:grid-cols-shell-wide items-center border-b border-line bg-gradient-to-b from-[oklch(0.235_0.006_250)] to-[oklch(0.205_0.006_250)] select-none h-9 overflow-hidden"
+      style={style}
+    >
+      <div className="app-window-dots flex gap-2 pl-3.5">
         <span className="w-3 h-3 rounded-full bg-[oklch(0.66_0.18_25)]" />
         <span className="w-3 h-3 rounded-full bg-[oklch(0.78_0.14_90)]" />
         <span className="w-3 h-3 rounded-full bg-[oklch(0.72_0.13_150)]" />
@@ -605,9 +1085,9 @@ function Titlebar({
           </>
         ) : null}
       </div>
-      <div className="flex items-center justify-end gap-1 pr-2.5 shrink-0 whitespace-nowrap">
+      <div className="app-titlebar-actions flex items-center justify-end gap-1 pr-2.5 shrink-0 whitespace-nowrap">
         <TitlebarButton icon={GitBranch}>main</TitlebarButton>
-        <TitlebarButton icon={Settings} aria-label="Settings" />
+        <TitlebarButton icon={Settings} aria-label="Settings" onClick={onSettings} />
       </div>
     </div>
   );
@@ -629,6 +1109,41 @@ function TitlebarButton({
   );
 }
 
+function PaneResizeHandle({
+  side,
+  value,
+  min,
+  max,
+  onPointerDown,
+  onReset,
+}: {
+  side: "left" | "right";
+  value: number;
+  min: number;
+  max: number;
+  onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onReset: () => void;
+}) {
+  return (
+    <div
+      role="separator"
+      aria-label={`${side === "left" ? "Left sidebar" : "Inspector"} width`}
+      aria-orientation="vertical"
+      aria-valuemin={min}
+      aria-valuemax={max}
+      aria-valuenow={Math.round(value)}
+      tabIndex={0}
+      title="Drag to resize. Double-click to reset."
+      onPointerDown={onPointerDown}
+      onDoubleClick={onReset}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") onReset();
+      }}
+      className={cx("pane-resizer", side)}
+    />
+  );
+}
+
 /* -------------------------------- sidebar ------------------------------- */
 
 function Sidebar({
@@ -641,6 +1156,9 @@ function Sidebar({
   onNav,
   onRefresh,
   onSeed,
+  onCreateWorkspace,
+  onChooseWorkspace,
+  onRequestProject,
 }: {
   workspace: WorkspaceData | null;
   rootPath: string;
@@ -651,6 +1169,9 @@ function Sidebar({
   onNav: (id: NavId) => void;
   onRefresh: () => void;
   onSeed: () => void;
+  onCreateWorkspace: () => void;
+  onChooseWorkspace: () => void;
+  onRequestProject: () => void;
 }) {
   const counts = useMemo(() => aggregateNavCounts(workspace), [workspace]);
   const navItems: { id: NavId; label: string; icon: LucideIcon; count: number }[] = [
@@ -659,11 +1180,12 @@ function Sidebar({
     { id: "decisions", label: "Decisions", icon: ListOrdered, count: counts.decisions },
     { id: "threads", label: "Threads", icon: MessageSquareText, count: counts.threads },
     { id: "ideas", label: "Ideas", icon: Lightbulb, count: counts.ideas },
+    { id: "files", label: "Files", icon: FileText, count: counts.files },
     { id: "inbox", label: "Inbox", icon: Inbox, count: counts.warnings },
   ];
 
   return (
-    <aside className="bg-surface-rail border-r border-line flex flex-col min-h-0">
+    <aside className="sidebar-shell bg-surface-rail border-r border-line flex flex-col min-h-0">
       <div className="flex items-center gap-2.5 px-3.5 pt-3.5 pb-3 border-b border-line-soft">
         <Triangle size={14} className="text-accent shrink-0" fill="currentColor" strokeWidth={0} />
         <span className="font-semibold text-[13.5px] tracking-[-0.01em]">Waymark</span>
@@ -687,10 +1209,17 @@ function Sidebar({
             value={rootPath}
             onChange={(event) => onRootPathChange(event.target.value)}
             spellCheck={false}
-            aria-label="Workspace path"
+            aria-label="Current workspace path"
             className="flex-1 min-w-0 bg-transparent border-0 outline-0 p-0 font-inherit truncate"
           />
-          <ChevronDown size={12} className="text-ink-mute ml-auto" />
+          <button
+            onClick={onChooseWorkspace}
+            className="w-[18px] h-[18px] grid place-items-center rounded-[3px] text-ink-faint hover:bg-surface-4 hover:text-ink"
+            aria-label="Choose workspace folder"
+            title="Choose workspace folder"
+          >
+            <FolderOpen size={12} />
+          </button>
         </div>
         <div className="flex gap-1.5 mt-1.5 px-1 whitespace-nowrap overflow-hidden">
           <span className="font-mono text-[10.5px] text-ink-faint inline-flex items-center gap-1 shrink-0">
@@ -703,6 +1232,9 @@ function Sidebar({
         <div className="flex gap-1 mt-1.5">
           <SidebarChipButton onClick={onRefresh}>
             <RefreshCw size={11} /> Reload
+          </SidebarChipButton>
+          <SidebarChipButton onClick={onCreateWorkspace} title="Create a workspace in a separate folder">
+            <Plus size={11} /> New…
           </SidebarChipButton>
           <SidebarChipButton onClick={onSeed}>
             <Sparkles size={11} /> Seed
@@ -728,7 +1260,12 @@ function Sidebar({
           <div className="text-[10px] uppercase tracking-[0.09em] text-ink-mute flex-1 font-medium">
             Projects
           </div>
-          <button className="w-[18px] h-[18px] grid place-items-center rounded-[3px] text-ink-faint hover:bg-surface-3 hover:text-ink" aria-label="New project">
+          <button
+            onClick={onRequestProject}
+            className="w-[18px] h-[18px] grid place-items-center rounded-[3px] text-ink-faint hover:bg-surface-3 hover:text-ink"
+            aria-label="New project"
+            title="Project creation is file-native: create a project folder, then reload."
+          >
             <Plus size={12} />
           </button>
         </div>
@@ -756,9 +1293,9 @@ function Sidebar({
 
       <div className="border-t border-line-soft px-3 py-2 flex items-center gap-2 text-[11px] text-ink-faint whitespace-nowrap overflow-hidden">
         <span className="w-1.5 h-1.5 rounded-full bg-lane-done shadow-[0_0_0_3px_oklch(0.74_0.13_150_/_0.18)] shrink-0" />
-        <span className="shrink-0">Indexer idle</span>
+        <span className="shrink-0">File-native</span>
         <span className="ml-auto font-mono text-[10.5px] text-ink-mute shrink-0">
-          {workspace ? "ready" : "—"}
+          {workspace ? "manual writes" : "—"}
         </span>
       </div>
     </aside>
@@ -857,22 +1394,26 @@ function ProjectRow({
 }
 
 function aggregateNavCounts(workspace: WorkspaceData | null) {
-  if (!workspace) return { active: 0, decisions: 0, threads: 0, ideas: 0, warnings: 0 };
+  if (!workspace) return { active: 0, decisions: 0, threads: 0, ideas: 0, files: 0, warnings: 0 };
   let active = 0;
   let decisions = 0;
   let threads = 0;
   let ideas = 0;
+  let files = 0;
   let warnings = workspace.warnings.length;
   for (const project of workspace.projects) {
     for (const ticket of project.tickets) {
       if (ticket.status === "now" || ticket.status === "next" || ticket.status === "blocked") active += 1;
+      files += ticket.linked_files?.length ?? 0;
     }
     decisions += project.decisions.length;
     threads += project.threads.length;
     ideas += project.ideas.length;
+    files += (project.config.repos?.length ?? 0) + Object.keys(project.config.links ?? {}).length + project.links.length;
+    files += project.decisions.length + project.ideas.length;
     warnings += project.warnings.length;
   }
-  return { active, decisions, threads, ideas, warnings };
+  return { active, decisions, threads, ideas, files, warnings };
 }
 
 /* ------------------------------ main header ----------------------------- */
@@ -882,9 +1423,14 @@ function MainHeader({
   workspace,
   tab,
   onTab,
+  selectedTicket,
+  selectedCount,
   handoffDisabled,
   search,
   onSearch,
+  searchInputRef,
+  gapsOnly,
+  onToggleGaps,
   onCapture,
   onSendHandoff,
 }: {
@@ -892,9 +1438,14 @@ function MainHeader({
   workspace: WorkspaceData | null;
   tab: MainTab;
   onTab: (value: MainTab) => void;
+  selectedTicket: Ticket | null;
+  selectedCount: number;
   handoffDisabled: boolean;
   search: string;
   onSearch: (value: string) => void;
+  searchInputRef: RefObject<HTMLInputElement | null>;
+  gapsOnly: boolean;
+  onToggleGaps: () => void;
   onCapture: () => void;
   onSendHandoff: () => void;
 }) {
@@ -905,6 +1456,8 @@ function MainHeader({
         threads: project.threads.length,
       }
     : { tickets: 0, decisions: 0, threads: 0 };
+  const handoffLabel =
+    selectedCount > 0 ? `Handoff ${selectedCount}` : selectedTicket ? `Handoff: ${selectedTicket.title}` : "Handoff";
 
   return (
     <>
@@ -947,19 +1500,25 @@ function MainHeader({
           <input
             placeholder="Find ticket, decision, thread, file…"
             value={search}
+            ref={searchInputRef}
             onChange={(event) => onSearch(event.target.value)}
             className="flex-1 min-w-0 bg-transparent border-0 outline-0 text-[12.5px] text-ink placeholder:text-ink-mute"
           />
           <span className="kbd">⌘K</span>
         </div>
-        <Btn variant="ghost" title="Filters">
+        <Btn
+          variant={gapsOnly ? "default" : "ghost"}
+          title="Show only tickets with missing context"
+          onClick={onToggleGaps}
+          aria-pressed={gapsOnly}
+        >
           <Sliders size={13} /> Filters
         </Btn>
         <Btn variant="ghost" onClick={onCapture}>
           <Plus size={13} /> Capture
         </Btn>
         <Btn variant="primary" onClick={onSendHandoff} disabled={handoffDisabled}>
-          <Sparkles size={11} /> Handoff <span className="kbd bg-[oklch(0_0_0_/_0.22)] border-[oklch(0_0_0_/_0.3)] text-accent-ink">⌘↵</span>
+          <Sparkles size={11} /> <span className="max-w-[180px] truncate">{handoffLabel}</span> <span className="kbd bg-[oklch(0_0_0_/_0.22)] border-[oklch(0_0_0_/_0.3)] text-accent-ink">⌘↵</span>
         </Btn>
       </div>
     </>
@@ -1054,6 +1613,109 @@ function Stats({ project }: { project: WaymarkProject }) {
   );
 }
 
+/* ----------------------------- main views ------------------------------ */
+
+function CockpitContent({
+  nav,
+  tab,
+  project,
+  workspace,
+  selectedTicketId,
+  selectedTicket,
+  onSelectTicket,
+  onSelectThread,
+  onSelectNote,
+  multi,
+  toggleMulti,
+  search,
+  gapsOnly,
+  onNav,
+  onAddFile,
+  onAddLink,
+}: {
+  nav: NavId;
+  tab: MainTab;
+  project: WaymarkProject;
+  workspace: WorkspaceData;
+  selectedTicketId: string | null;
+  selectedTicket: Ticket | null;
+  onSelectTicket: (ticket: Ticket) => void;
+  onSelectThread: (thread: ThreadRecord) => void;
+  onSelectNote: (note: NoteRecord) => void;
+  multi: string[];
+  toggleMulti: (id: string) => void;
+  search: string;
+  gapsOnly: boolean;
+  onNav: (id: NavId) => void;
+  onAddFile: () => void;
+  onAddLink: () => void;
+}) {
+  const view: NavId | MainTab = nav === "home" && tab !== "overview" ? tab : nav;
+
+  if (view === "queue" || view === "tickets") {
+    return (
+      <>
+        <Stats project={project} />
+        <Queue
+          project={project}
+          selectedKey={selectedTicketId}
+          onSelect={onSelectTicket}
+          multi={multi}
+          toggleMulti={toggleMulti}
+          search={search}
+          gapsOnly={gapsOnly}
+        />
+      </>
+    );
+  }
+
+  if (view === "decisions") {
+    return <Decisions decisions={project.decisions} search={search} onSelect={onSelectNote} />;
+  }
+
+  if (view === "threads") {
+    return <ThreadsView project={project} search={search} onSelect={onSelectThread} />;
+  }
+
+  if (view === "ideas") {
+    return <NotesView title="Ideas" notes={project.ideas} search={search} empty="No ideas captured." onSelect={onSelectNote} />;
+  }
+
+  if (view === "inbox") {
+    return <InboxView project={project} workspace={workspace} search={search} gapsOnly={gapsOnly} />;
+  }
+
+  if (view === "files") {
+    return (
+      <FilesView
+        project={project}
+        selectedTicket={selectedTicket}
+        search={search}
+        onAddFile={onAddFile}
+        onAddLink={onAddLink}
+      />
+    );
+  }
+
+  return (
+    <>
+      <Stats project={project} />
+      <Queue
+        project={project}
+        selectedKey={selectedTicketId}
+        onSelect={onSelectTicket}
+        multi={multi}
+        toggleMulti={toggleMulti}
+        search={search}
+        gapsOnly={gapsOnly}
+        onViewAll={() => onNav("queue")}
+      />
+      <Decisions decisions={project.decisions} search={search} limit={8} onViewAll={() => onNav("decisions")} onSelect={onSelectNote} />
+      <IdeasAndActivity project={project} workspace={workspace} search={search} onSelectNote={onSelectNote} onSelectThread={onSelectThread} onSelectTicket={onSelectTicket} />
+    </>
+  );
+}
+
 /* -------------------------------- queue -------------------------------- */
 
 function Queue({
@@ -1063,6 +1725,8 @@ function Queue({
   multi,
   toggleMulti,
   search,
+  gapsOnly,
+  onViewAll,
 }: {
   project: WaymarkProject;
   selectedKey: string | null;
@@ -1070,23 +1734,27 @@ function Queue({
   multi: string[];
   toggleMulti: (id: string) => void;
   search: string;
+  gapsOnly: boolean;
+  onViewAll?: () => void;
 }) {
   const lanes = useMemo(() => {
     const filter = search.trim().toLowerCase();
     const matching = project.tickets.filter((ticket) => {
       if (ticket.status === "idea") return false;
+      if (gapsOnly && ticketWarnings(project, ticket).length === 0) return false;
       if (!filter) return true;
       return (
         ticket.title.toLowerCase().includes(filter) ||
         ticket.id.toLowerCase().includes(filter) ||
-        ticket.summary?.toLowerCase().includes(filter)
+        ticket.summary?.toLowerCase().includes(filter) ||
+        ticket.linked_files?.some((file) => file.toLowerCase().includes(filter))
       );
     });
     return LANES_IN_QUEUE.map((lane) => ({
       lane,
       items: matching.filter((ticket) => ticket.status === lane),
     })).filter((group) => group.items.length > 0);
-  }, [project, search]);
+  }, [project, search, gapsOnly]);
 
   const activeCount = project.tickets.filter(
     (ticket) => ticket.status !== "done" && ticket.status !== "idea",
@@ -1096,9 +1764,14 @@ function Queue({
     <div className="mb-[22px]">
       <SectionHead
         more={
-          <button className="text-[11px] text-ink-mute inline-flex items-center gap-1 hover:text-ink-soft cursor-pointer">
+          onViewAll ? (
+          <button
+            onClick={onViewAll}
+            className="text-[11px] text-ink-mute inline-flex items-center gap-1 hover:text-ink-soft cursor-pointer"
+          >
             View all <ArrowRight size={11} />
           </button>
+          ) : undefined
         }
       >
         Queue <span className="font-mono text-[10px] text-ink-mute font-normal tracking-normal normal-case">{activeCount} active</span>
@@ -1162,6 +1835,7 @@ function TicketRow({
       paddingX={14}
       gap={10}
       onClick={onClick}
+      ariaLabel={`Open ticket ${ticket.title}`}
       selected={selected}
       className={cx(multiSel && !selected && "bg-[oklch(0.78_0.135_75_/_0.06)]")}
     >
@@ -1217,38 +1891,62 @@ function TicketRow({
 
 /* ----------------------------- decisions -------------------------------- */
 
-function Decisions({ decisions }: { decisions: NoteRecord[] }) {
-  if (decisions.length === 0) {
+function Decisions({
+  decisions,
+  search,
+  limit,
+  onViewAll,
+  onSelect,
+}: {
+  decisions: NoteRecord[];
+  search: string;
+  limit?: number;
+  onViewAll?: () => void;
+  onSelect?: (note: NoteRecord) => void;
+}) {
+  const visible = decisions.filter((decision) =>
+    matchesSearch([decision.id, decision.title, decision.status, decision.date, decision.body], search),
+  );
+
+  if (visible.length === 0) {
     return (
       <div className="mb-[22px]">
         <SectionHead>
-          Recent decisions <span className="font-mono text-[10px] text-ink-mute font-normal normal-case tracking-normal">0</span>
+          Decisions <span className="font-mono text-[10px] text-ink-mute font-normal normal-case tracking-normal">0</span>
         </SectionHead>
         <Card>
-          <EmptyRow>No decisions captured yet.</EmptyRow>
+          <EmptyRow>{search ? "No decisions match." : "No decisions captured yet."}</EmptyRow>
         </Card>
       </div>
     );
   }
+  const rows = typeof limit === "number" ? visible.slice(0, limit) : visible;
   return (
     <div className="mb-[22px]">
       <SectionHead
         more={
-          <button className="text-[11px] text-ink-mute inline-flex items-center gap-1 hover:text-ink-soft cursor-pointer">
+          onViewAll ? (
+          <button
+            onClick={onViewAll}
+            className="text-[11px] text-ink-mute inline-flex items-center gap-1 hover:text-ink-soft cursor-pointer"
+          >
             All decisions <ArrowRight size={11} />
           </button>
+          ) : undefined
         }
       >
-        Recent decisions <span className="font-mono text-[10px] text-ink-mute font-normal normal-case tracking-normal">last entries</span>
+        Decisions <span className="font-mono text-[10px] text-ink-mute font-normal normal-case tracking-normal">{visible.length}</span>
       </SectionHead>
       <Card>
-        {decisions.slice(0, 8).map((decision) => (
+        {rows.map((decision) => (
           <DataRow
             key={decision.path}
             cols="grid-cols-decision-narrow xl:grid-cols-decision"
             height={30}
             paddingX={14}
             gap={12}
+            onClick={() => onSelect?.(decision)}
+            ariaLabel={`Open decision ${decision.title}`}
           >
             <Cell mono size={11} tone="faint">{decision.id}</Cell>
             <Cell tone="ink">{decision.title}</Cell>
@@ -1273,28 +1971,317 @@ function Decisions({ decisions }: { decisions: NoteRecord[] }) {
   );
 }
 
+function NotesView({
+  title,
+  notes,
+  search,
+  empty,
+  onSelect,
+}: {
+  title: string;
+  notes: NoteRecord[];
+  search: string;
+  empty: string;
+  onSelect?: (note: NoteRecord) => void;
+}) {
+  const visible = notes.filter((note) =>
+    matchesSearch([note.id, note.title, note.status, note.date, note.body, note.path], search),
+  );
+  return (
+    <div className="mb-[22px]">
+      <SectionHead>
+        {title} <span className="font-mono text-[10px] text-ink-mute font-normal normal-case tracking-normal">{visible.length}</span>
+      </SectionHead>
+      <Card>
+        {visible.length === 0 ? (
+          <EmptyRow>{search ? `No ${title.toLowerCase()} match.` : empty}</EmptyRow>
+        ) : (
+          visible.map((note) => (
+            <DataRow
+              key={note.path}
+              cols="grid-cols-decision-narrow xl:grid-cols-decision"
+              height={30}
+              paddingX={14}
+              gap={12}
+              onClick={() => onSelect?.(note)}
+              ariaLabel={`Open ${note.type} ${note.title}`}
+            >
+              <Cell mono size={11} tone="faint">{note.id}</Cell>
+              <Cell tone="ink">{note.title}</Cell>
+              <div className="justify-self-start min-w-0 max-w-full font-mono text-[10px] text-ink-faint bg-surface-row-selected border border-line px-1.5 py-px rounded-[3px] truncate">
+                {note.status ?? note.type}
+              </div>
+              <Cell mono size={10.5} tone="mute">{note.date ?? "—"}</Cell>
+              <Cell mono size={10.5} tone="mute" align="end" title={note.path} className="hidden xl:block">
+                {note.path.split("/").slice(-2).join("/")}
+              </Cell>
+            </DataRow>
+          ))
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function ThreadsView({
+  project,
+  search,
+  onSelect,
+}: {
+  project: WaymarkProject;
+  search: string;
+  onSelect: (thread: ThreadRecord) => void;
+}) {
+  const visible = project.threads.filter((thread) =>
+    matchesSearch([thread.id, thread.title, thread.provider, thread.status, thread.summary_file, thread.url], search),
+  );
+  return (
+    <div className="mb-[22px]">
+      <SectionHead>
+        Threads <span className="font-mono text-[10px] text-ink-mute font-normal normal-case tracking-normal">{visible.length}</span>
+      </SectionHead>
+      <Card>
+        {visible.length === 0 ? (
+          <EmptyRow>{search ? "No threads match." : "No threads linked yet."}</EmptyRow>
+        ) : (
+          visible.map((thread) => (
+            <DataRow
+              key={thread.id}
+              cols="grid-cols-link"
+              height={30}
+              paddingX={12}
+              gap={10}
+              onClick={() => onSelect(thread)}
+              ariaLabel={`Open thread reference ${thread.title}`}
+            >
+              <Cell mono size={10} tone="mute" className="uppercase tracking-[0.07em]">{thread.provider}</Cell>
+              <Cell mono size={11} tone="faint">{thread.id}</Cell>
+              <Cell tone="soft" title={thread.title}>{thread.title}</Cell>
+              <span className="font-mono text-[10px] text-ink-mute shrink-0">{thread.status}</span>
+            </DataRow>
+          ))
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function FilesView({
+  project,
+  selectedTicket,
+  search,
+  onAddFile,
+  onAddLink,
+}: {
+  project: WaymarkProject;
+  selectedTicket: Ticket | null;
+  search: string;
+  onAddFile: () => void;
+  onAddLink: () => void;
+}) {
+  const rows = [
+    ...(project.config.repos ?? []).map((repo) => ({
+      kind: "repo",
+      id: repo.id,
+      label: repo.name,
+      value: repo.path ?? repo.url ?? repo.name,
+      actionPath: repo.path ?? repo.url,
+    })),
+    ...Object.entries(project.config.links ?? {}).map(([id, url]) => ({
+      kind: "link",
+      id,
+      label: id,
+      value: url,
+      actionPath: url,
+    })),
+    ...project.links.map((link) => ({
+      kind: link.type,
+      id: link.id,
+      label: link.label,
+      value: link.url,
+      actionPath: link.url,
+    })),
+    ...project.tickets.flatMap((ticket) =>
+      (ticket.linked_files ?? []).map((file) => ({
+        kind: "file",
+        id: ticket.id,
+        label: ticket.title,
+        value: file,
+        actionPath: resolveProjectPath(project, file),
+      })),
+    ),
+    ...project.decisions.map((decision) => ({
+      kind: "decision",
+      id: decision.id,
+      label: decision.title,
+      value: decision.path,
+      actionPath: decision.path,
+    })),
+    ...project.ideas.map((idea) => ({
+      kind: "idea",
+      id: idea.id,
+      label: idea.title,
+      value: idea.path,
+      actionPath: idea.path,
+    })),
+  ].filter((row) => matchesSearch([row.kind, row.id, row.label, row.value], search));
+
+  return (
+    <div className="mb-[22px]">
+      <SectionHead
+        more={
+          <div className="flex items-center gap-1">
+            <Btn variant="ghost" onClick={onAddFile}>
+              <Plus size={11} /> File
+            </Btn>
+            <Btn variant="ghost" onClick={onAddLink}>
+              <Plus size={11} /> Link
+            </Btn>
+          </div>
+        }
+      >
+        Files & links <span className="font-mono text-[10px] text-ink-mute font-normal normal-case tracking-normal">{rows.length}{selectedTicket ? ` · ${selectedTicket.id}` : ""}</span>
+      </SectionHead>
+      <Card>
+        {rows.length === 0 ? (
+          <EmptyRow>{search ? "No files or links match." : "No file context yet."}</EmptyRow>
+        ) : (
+          rows.map((row) => (
+            <DataRow
+              key={`${row.kind}-${row.id}-${row.value}`}
+              cols="grid-cols-link"
+              height={32}
+              paddingX={12}
+              gap={10}
+              onClick={row.actionPath ? () => openPath(row.actionPath as string) : undefined}
+              ariaLabel={`Open ${row.kind} ${row.label}`}
+            >
+              <Cell mono size={9.5} tone="mute" className="uppercase tracking-[0.07em]">{row.kind}</Cell>
+              <Cell mono size={11} tone="faint">{row.id}</Cell>
+              <div className="min-w-0">
+                <div className="truncate text-[12px] text-ink-soft" title={row.label}>{row.label}</div>
+                <div className="truncate font-mono text-[10.5px] text-ink-mute" title={row.value}>{row.value}</div>
+              </div>
+              <div className="flex items-center gap-1 justify-end shrink-0">
+                <button
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    navigator.clipboard?.writeText(row.value).catch(() => undefined);
+                  }}
+                  title="Copy"
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 text-ink-faint rounded-[3px] text-[11px] hover:bg-surface-3 hover:text-ink cursor-pointer"
+                >
+                  <Copy size={10} />
+                </button>
+                {row.actionPath ? (
+                  <button
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openPath(row.actionPath as string);
+                    }}
+                    title="Open"
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 text-ink-faint rounded-[3px] text-[11px] hover:bg-surface-3 hover:text-ink cursor-pointer"
+                  >
+                    <ArrowRight size={10} />
+                  </button>
+                ) : null}
+              </div>
+            </DataRow>
+          ))
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function InboxView({
+  project,
+  workspace,
+  search,
+  gapsOnly,
+}: {
+  project: WaymarkProject;
+  workspace: WorkspaceData;
+  search: string;
+  gapsOnly: boolean;
+}) {
+  const ticketGaps = project.tickets.flatMap((ticket) =>
+    ticketWarnings(project, ticket).map((warning) => ({
+      kind: "ticket",
+      id: ticket.id,
+      title: warning,
+    })),
+  );
+  const rows = [
+    ...workspace.warnings.map((warning, index) => ({ kind: "workspace", id: String(index + 1), title: warning })),
+    ...project.warnings.map((warning, index) => ({ kind: "project", id: String(index + 1), title: warning })),
+    ...(gapsOnly ? ticketGaps : []),
+  ].filter((row) => matchesSearch([row.kind, row.id, row.title], search));
+
+  return (
+    <div className="mb-[22px]">
+      <SectionHead>
+        Inbox <span className="font-mono text-[10px] text-ink-mute font-normal normal-case tracking-normal">{rows.length}</span>
+      </SectionHead>
+      <Card>
+        {rows.length === 0 ? (
+          <EmptyRow>No warnings right now.</EmptyRow>
+        ) : (
+          rows.map((row, index) => (
+            <DataRow key={`${row.kind}-${row.id}-${index}`} cols="grid-cols-link" height={30} paddingX={12} gap={10}>
+              <Cell mono size={10} tone="mute" className="uppercase tracking-[0.07em]">{row.kind}</Cell>
+              <Cell mono size={11} tone="faint">{row.id}</Cell>
+              <Cell tone="soft" title={row.title}>{row.title}</Cell>
+              <AlertTriangle size={12} className="text-warn justify-self-end" />
+            </DataRow>
+          ))
+        )}
+      </Card>
+    </div>
+  );
+}
+
 /* --------------------------- ideas + activity --------------------------- */
 
 function IdeasAndActivity({
   project,
   workspace,
+  search,
+  onSelectNote,
+  onSelectThread,
+  onSelectTicket,
 }: {
   project: WaymarkProject;
   workspace: WorkspaceData;
+  search: string;
+  onSelectNote: (note: NoteRecord) => void;
+  onSelectThread: (thread: ThreadRecord) => void;
+  onSelectTicket: (ticket: Ticket) => void;
 }) {
   const activity = useMemo(() => buildActivity(workspace, project), [workspace, project]);
+  const ideas = project.ideas.filter((idea) =>
+    matchesSearch([idea.id, idea.title, idea.status, idea.date, idea.body], search),
+  );
   return (
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-[22px] mb-[22px]">
       <div className="min-w-0">
         <SectionHead>
-          Ideas <span className="hidden font-mono text-[10px] text-ink-mute font-normal normal-case tracking-normal">{project.ideas.length} captured</span>
+          Ideas <span className="font-mono text-[10px] text-ink-mute font-normal normal-case tracking-normal">{ideas.length}</span>
         </SectionHead>
         <Card>
-          {project.ideas.length === 0 ? (
-            <EmptyRow>No ideas captured.</EmptyRow>
+          {ideas.length === 0 ? (
+            <EmptyRow>{search ? "No ideas match." : "No ideas captured."}</EmptyRow>
           ) : (
-            project.ideas.slice(0, 8).map((idea) => (
-              <DataRow key={idea.path} cols="grid-cols-idea" height={28} paddingX={12} gap={10}>
+            ideas.slice(0, 8).map((idea) => (
+              <DataRow
+                key={idea.path}
+                cols="grid-cols-idea"
+                height={28}
+                paddingX={12}
+                gap={10}
+                onClick={() => onSelectNote(idea)}
+                ariaLabel={`Open idea ${idea.title}`}
+              >
                 <Cell mono size={10.5} tone="mute">{idea.id}</Cell>
                 <Cell size={12} tone="soft">{idea.title}</Cell>
                 <Cell mono size={10} tone="mute" align="end">{idea.date ?? "—"}</Cell>
@@ -1309,20 +2296,34 @@ function IdeasAndActivity({
           {activity.length === 0 ? (
             <EmptyRow>Nothing recent.</EmptyRow>
           ) : (
-            activity.map((row, index) => (
+            activity.map((row, index) => {
+              const thread = project.threads.find((candidate) => candidate.title === row.text);
+              const ticket = project.tickets.find((candidate) => candidate.title === row.text);
+              const note = [...project.decisions, ...project.ideas].find((candidate) => candidate.title === row.text);
+              const onClick = thread
+                ? () => onSelectThread(thread)
+                : ticket
+                  ? () => onSelectTicket(ticket)
+                  : note
+                    ? () => onSelectNote(note)
+                    : undefined;
+              return (
               <DataRow
                 key={`${row.kind}-${index}`}
                 cols="grid-cols-activity"
                 height={26}
                 paddingX={12}
                 gap={10}
+                onClick={onClick}
+                ariaLabel={onClick ? `Open ${row.text}` : undefined}
               >
                 <Cell mono size={10} tone="mute">{row.t}</Cell>
                 <span className="inline-flex items-center shrink-0"><Pin kind={row.kind} /></span>
                 <Cell mono size={10} tone="faint">{row.proj}</Cell>
                 <Cell size={11.5} tone="soft">{row.text}</Cell>
               </DataRow>
-            ))
+              );
+            })
           )}
         </Card>
       </div>
@@ -1337,24 +2338,30 @@ function Inspector({
   onMode,
   project,
   ticket,
+  thread,
+  note,
   multi,
   workspace,
   onSendHandoff,
   onStatus,
+  onEditTicket,
 }: {
   mode: InspectorMode;
   onMode: (value: InspectorMode) => void;
   project: WaymarkProject | null;
   ticket: Ticket | null;
+  thread: ThreadRecord | null;
+  note: NoteRecord | null;
   multi: string[];
   workspace: WorkspaceData | null;
   onSendHandoff: () => void;
   onStatus: (ticket: Ticket, status: TicketStatus) => void;
+  onEditTicket: (ticket: Ticket) => void;
 }) {
   const bundleSize = multi.length;
 
   return (
-    <aside className="bg-surface-rail-2 border-l border-line flex flex-col min-h-0 min-w-0 overflow-hidden">
+    <aside className="inspector-shell bg-surface-rail-2 border-l border-line flex flex-col min-h-0 min-w-0 overflow-hidden">
       <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-line shrink-0 min-w-0 overflow-x-auto scrollbar-none">
         <InspectorTab active={mode === "ticket"} onClick={() => onMode("ticket")} icon={FileText}>
           Ticket
@@ -1366,10 +2373,18 @@ function Inspector({
           ) : null}
         </InspectorTab>
         <InspectorTab active={mode === "thread"} onClick={() => onMode("thread")} icon={MessageSquareText}>
-          Thread
+          Ref
+        </InspectorTab>
+        <InspectorTab active={mode === "note"} onClick={() => onMode("note")} icon={ListOrdered}>
+          Note
         </InspectorTab>
         <div className="flex-1 min-w-0" />
-        <button className="w-6 h-6 shrink-0 grid place-items-center rounded-[3px] text-ink-faint hover:bg-surface-3 hover:text-ink" title="Open in editor">
+        <button
+          onClick={() => project && openPath(project.rootPath)}
+          disabled={!project}
+          className="w-6 h-6 shrink-0 grid place-items-center rounded-[3px] text-ink-faint hover:bg-surface-3 hover:text-ink disabled:opacity-40 disabled:cursor-not-allowed"
+          title="Open project folder"
+        >
           <Link2 size={12} />
         </button>
       </div>
@@ -1378,7 +2393,13 @@ function Inspector({
         <InspectorEmpty>Open a workspace to see ticket details.</InspectorEmpty>
       ) : mode === "ticket" ? (
         ticket ? (
-          <InspectorTicket project={project} ticket={ticket} onStatus={onStatus} onSendHandoff={onSendHandoff} />
+          <InspectorTicket
+            project={project}
+            ticket={ticket}
+            onStatus={onStatus}
+            onSendHandoff={onSendHandoff}
+            onEdit={onEditTicket}
+          />
         ) : (
           <InspectorEmpty>Select a ticket to inspect.</InspectorEmpty>
         )
@@ -1390,8 +2411,10 @@ function Inspector({
           workspace={workspace}
           onSendHandoff={onSendHandoff}
         />
+      ) : mode === "thread" ? (
+        <InspectorThread project={project} ticket={ticket} selectedThread={thread} />
       ) : (
-        <InspectorThread project={project} ticket={ticket} />
+        <InspectorNote note={note} />
       )}
     </aside>
   );
@@ -1482,11 +2505,13 @@ function InspectorTicket({
   ticket,
   onStatus,
   onSendHandoff,
+  onEdit,
 }: {
   project: WaymarkProject;
   ticket: Ticket;
   onStatus: (ticket: Ticket, status: TicketStatus) => void;
   onSendHandoff: () => void;
+  onEdit: (ticket: Ticket) => void;
 }) {
   const linkedDecisions = project.decisions.filter((decision) =>
     ticket.linked_decisions?.includes(decision.id),
@@ -1530,8 +2555,7 @@ function InspectorTicket({
               ticket.summary
             ) : (
               <span className="text-ink-mute">
-                No summary written.{" "}
-                <button className="text-accent hover:underline cursor-pointer">Generate from thread →</button>
+                No summary written yet. Add one to this ticket in <code>tickets.yaml</code>.
               </span>
             )}
           </div>
@@ -1551,7 +2575,7 @@ function InspectorTicket({
             <div className="flex items-start gap-2 bg-[oklch(0.82_0.14_90_/_0.08)] border border-[oklch(0.82_0.14_90_/_0.22)] px-2.5 py-2 rounded-[5px] text-[12px] text-ink-soft">
               <AlertTriangle size={12} className="text-warn shrink-0 mt-px" />
               <span>
-                No acceptance criteria. <button className="text-accent hover:underline cursor-pointer">Draft from thread →</button>
+                No acceptance criteria yet. Add clear checks before sending this ticket to an agent.
               </span>
             </div>
           )}
@@ -1585,11 +2609,11 @@ function InspectorTicket({
                   title={path}
                   trailing={
                     <button
-                      onClick={() => openPath(path)}
-                      title="Reveal"
+                      onClick={() => openPath(resolveProjectPath(project, path))}
+                      title="Open"
                       className="inline-flex items-center gap-1 px-1 py-0.5 text-ink-faint rounded-[3px] text-[11px] hover:bg-surface-3 hover:text-ink cursor-pointer"
                     >
-                      <Copy size={10} />
+                      <ArrowRight size={10} />
                     </button>
                   }
                 />
@@ -1612,6 +2636,9 @@ prompts: ${ticket.generated_prompts?.length ?? 0}`}
       </InspectorBody>
 
       <InspectorActions>
+        <Btn onClick={() => onEdit(ticket)}>
+          <FileText size={11} /> Edit
+        </Btn>
         <Btn variant="primary" onClick={onSendHandoff}>
           <Sparkles size={11} /> Send to agent
         </Btn>
@@ -1678,7 +2705,7 @@ function InspectorPrompt({
           title={tickets.length > 1 ? `Bundle · ${tickets.length} tickets` : "Single ticket"}
           meta={
             <div className="flex items-center gap-1.5 font-mono text-[10px] text-ink-mute whitespace-nowrap overflow-hidden flex-wrap">
-              <span>● claude-sonnet-4.5</span>
+              <span>● local prompt</span>
               <span>·</span>
               <span>~{tokens.toLocaleString()} tokens</span>
               <span>·</span>
@@ -1713,9 +2740,7 @@ function InspectorPrompt({
                 <div className="shrink-0"><StatusChip status={entry.status} /></div>
                 <Cell mono size={11} tone="faint">{entry.id}</Cell>
                 <Cell size={12} tone="soft">{entry.title}</Cell>
-                <button className="text-ink-mute hover:text-ink cursor-pointer shrink-0">
-                  <ChevronDown size={12} />
-                </button>
+                <span className="text-ink-mute justify-self-end font-mono text-[10px]">{entry.priority ?? "med"}</span>
               </DataRow>
             ))}
           </Card>
@@ -1728,26 +2753,33 @@ function InspectorPrompt({
         <Btn onClick={() => navigator.clipboard?.writeText(prompt).catch(() => undefined)}>
           <Copy size={11} /> Copy prompt
         </Btn>
-        <Btn variant="ghost">Save as preset</Btn>
       </InspectorActions>
     </>
   );
 }
 
-function InspectorThread({ project, ticket }: { project: WaymarkProject; ticket: Ticket | null }) {
+function InspectorThread({
+  project,
+  ticket,
+  selectedThread,
+}: {
+  project: WaymarkProject;
+  ticket: Ticket | null;
+  selectedThread: ThreadRecord | null;
+}) {
   const linked = ticket
     ? project.threads.find((thread) => ticket.linked_threads?.includes(thread.id))
     : null;
   const fallback = project.threads[0] ?? null;
-  const thread: ThreadRecord | null = linked ?? fallback;
+  const thread: ThreadRecord | null = selectedThread ?? linked ?? fallback;
 
-  if (!thread) return <InspectorEmpty>No threads linked yet.</InspectorEmpty>;
+  if (!thread) return <InspectorEmpty>No thread references captured yet.</InspectorEmpty>;
 
   return (
     <>
       <InspectorBody>
         <InspectorHead
-          eyebrow={<span className="text-[10.5px] text-ink-faint tracking-[0.08em] uppercase">Linked thread</span>}
+          eyebrow={<span className="text-[10.5px] text-ink-faint tracking-[0.08em] uppercase">Manual thread reference</span>}
           title={thread.title}
           meta={
             <div className="flex items-center gap-1.5 font-mono text-[10px] text-ink-mute whitespace-nowrap overflow-hidden flex-wrap">
@@ -1767,12 +2799,17 @@ function InspectorThread({ project, ticket }: { project: WaymarkProject; ticket:
         <InspectorSection
           label={
             <>
-              Summary <span className="text-ink-mute normal-case tracking-normal">· file</span>
+              Summary <span className="text-ink-mute normal-case tracking-normal">· stored file path</span>
             </>
           }
         >
           <div className="text-[12.5px] text-ink-soft leading-[1.55]">
             {thread.summary_file ? <code>{thread.summary_file}</code> : <span className="text-ink-mute">No summary file.</span>}
+          </div>
+        </InspectorSection>
+        <InspectorSection label="What this is">
+          <div className="text-[12.5px] text-ink-faint leading-[1.55]">
+            Waymark stores thread IDs, URLs, and summary-file references that you enter. It does not read private Codex app threads directly.
           </div>
         </InspectorSection>
 
@@ -1797,8 +2834,60 @@ function InspectorThread({ project, ticket }: { project: WaymarkProject; ticket:
         </InspectorSection>
       </InspectorBody>
       <InspectorActions>
-        <Btn>Continue thread</Btn>
-        <Btn variant="ghost">Re-summarize</Btn>
+        <Btn onClick={() => navigator.clipboard?.writeText(thread.id).catch(() => undefined)}>
+          <Copy size={11} /> Copy ID
+        </Btn>
+        {thread.url ? (
+          <Btn variant="ghost" onClick={() => openPath(thread.url as string)}>
+            <ArrowRight size={11} /> Open URL
+          </Btn>
+        ) : null}
+      </InspectorActions>
+    </>
+  );
+}
+
+function InspectorNote({ note }: { note: NoteRecord | null }) {
+  if (!note) return <InspectorEmpty>Select a decision or idea to inspect.</InspectorEmpty>;
+  return (
+    <>
+      <InspectorBody>
+        <InspectorHead
+          eyebrow={
+            <>
+              <span className="font-mono text-[10.5px] text-ink-faint tracking-[0.08em] uppercase">{note.type}</span>
+              <span className="font-mono text-[10.5px] text-ink-mute">· {note.status ?? "open"}</span>
+            </>
+          }
+          title={note.title}
+          meta={
+            <div className="flex items-center gap-1.5 font-mono text-[10px] text-ink-mute whitespace-nowrap overflow-hidden flex-wrap">
+              <span>{note.id}</span>
+              <span>·</span>
+              <span>{note.date ?? "undated"}</span>
+            </div>
+          }
+        />
+        <InspectorSection label="Body">
+          <div className="text-[12.5px] text-ink-soft leading-[1.55] whitespace-pre-wrap">{note.body || "No body."}</div>
+        </InspectorSection>
+        <InspectorSection label="Linked tickets">
+          <Card>
+            {note.linked_tickets.length === 0 ? (
+              <EmptyRow>No linked tickets.</EmptyRow>
+            ) : (
+              note.linked_tickets.map((id) => <LinkRow key={id} kind="ticket" identifier={id} title={id} />)
+            )}
+          </Card>
+        </InspectorSection>
+      </InspectorBody>
+      <InspectorActions>
+        <Btn onClick={() => navigator.clipboard?.writeText(note.path).catch(() => undefined)}>
+          <Copy size={11} /> Copy path
+        </Btn>
+        <Btn variant="ghost" onClick={() => openPath(note.path)}>
+          <ArrowRight size={11} /> Open file
+        </Btn>
       </InspectorActions>
     </>
   );
@@ -1810,14 +2899,18 @@ function EmptyState({
   tauri,
   rootPath,
   onRootPath,
+  onChooseWorkspace,
   onSeed,
   onRefresh,
+  onCreateWorkspace,
 }: {
   tauri: boolean;
   rootPath: string;
   onRootPath: (value: string) => void;
+  onChooseWorkspace: () => void;
   onSeed: () => void;
   onRefresh: () => void;
+  onCreateWorkspace: () => void;
 }) {
   return (
     <div className="grid place-items-center gap-3.5 py-16 px-8 text-center text-ink-faint">
@@ -1837,6 +2930,12 @@ function EmptyState({
         />
       </div>
       <div className="flex gap-2">
+        <Btn onClick={onChooseWorkspace} disabled={!tauri}>
+          <FolderOpen size={13} /> Browse
+        </Btn>
+        <Btn onClick={onCreateWorkspace} disabled={!tauri}>
+          <Plus size={13} /> New workspace
+        </Btn>
         <Btn onClick={onRefresh}>
           <RefreshCw size={13} /> Open
         </Btn>
@@ -1845,6 +2944,309 @@ function EmptyState({
         </Btn>
       </div>
     </div>
+  );
+}
+
+function CreateWorkspaceModal({
+  tauri,
+  onClose,
+  onChooseWorkspace,
+  onCreate,
+}: {
+  tauri: boolean;
+  onClose: () => void;
+  onChooseWorkspace: () => Promise<string | null>;
+  onCreate: (path: string, name: string) => Promise<void>;
+}) {
+  const [name, setName] = useState("Waymark Workspace");
+  const [path, setPath] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function chooseDestination() {
+    setError(null);
+    try {
+      const selected = await onChooseWorkspace();
+      if (selected) setPath(selected);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }
+
+  return (
+    <ModalFrame title="Create workspace" onClose={onClose}>
+      <form
+        onSubmit={async (event) => {
+          event.preventDefault();
+          const cleanPath = path.trim();
+          const cleanName = name.trim() || "Waymark Workspace";
+          if (!cleanPath) {
+            setError("Choose or enter a destination folder.");
+            return;
+          }
+          setBusy(true);
+          setError(null);
+          try {
+            await onCreate(cleanPath, cleanName);
+          } catch (caught) {
+            setError(caught instanceof Error ? caught.message : String(caught));
+          } finally {
+            setBusy(false);
+          }
+        }}
+        className="flex flex-col gap-3"
+      >
+        <p className="m-0 text-[12.5px] leading-[1.55] text-ink-faint">
+          Creation uses this destination only. The current workspace path is for opening and reloading existing workspaces.
+        </p>
+        <div>
+          <FieldLabel>Name</FieldLabel>
+          <input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            className={cx(inputClass, "mt-1")}
+            autoFocus
+          />
+        </div>
+        <div>
+          <FieldLabel>Destination folder</FieldLabel>
+          <div className="grid grid-cols-[1fr_auto] gap-2 mt-1">
+            <input
+              value={path}
+              onChange={(event) => setPath(event.target.value)}
+              placeholder="/path/to/empty-folder"
+              spellCheck={false}
+              className={inputClass}
+            />
+            <Btn type="button" onClick={chooseDestination} disabled={!tauri}>
+              <FolderOpen size={13} /> Browse
+            </Btn>
+          </div>
+        </div>
+        {!tauri ? (
+          <Notice tone="warn">
+            <AlertTriangle size={13} /> Workspace creation writes local files, so it is only enabled in Tauri.
+          </Notice>
+        ) : null}
+        {error ? <Notice tone="err"><AlertTriangle size={13} /> {error}</Notice> : null}
+        <div className="flex gap-2 justify-end">
+          <Btn type="button" variant="ghost" onClick={onClose}>Cancel</Btn>
+          <Btn type="submit" variant="primary" disabled={!tauri || busy || !path.trim()}>
+            <Plus size={11} /> Create workspace
+          </Btn>
+        </div>
+      </form>
+    </ModalFrame>
+  );
+}
+
+/* ------------------------------- editing ------------------------------- */
+
+function FieldLabel({ children }: { children: ReactNode }) {
+  return <label className="text-[10px] uppercase tracking-[0.10em] text-ink-mute font-semibold">{children}</label>;
+}
+
+const inputClass =
+  "w-full bg-surface-input-2 border border-line-soft text-ink rounded-[3px] px-2 py-1.5 text-[12.5px] outline-0 focus:border-accent-deep";
+const textareaClass =
+  "w-full bg-surface-input-2 border border-line-soft text-ink rounded-[3px] px-2 py-1.5 outline-0 focus:border-accent-deep min-h-[74px] resize-y leading-[1.45] font-mono text-[11.5px]";
+
+function TicketEditModal({
+  ticket,
+  onClose,
+  onSave,
+}: {
+  ticket: Ticket;
+  onClose: () => void;
+  onSave: (ticket: Ticket) => Promise<void>;
+}) {
+  const [title, setTitle] = useState(ticket.title);
+  const [status, setStatus] = useState<TicketStatus>(ticket.status);
+  const [priority, setPriority] = useState<Priority>(ticket.priority ?? "medium");
+  const [summary, setSummary] = useState(ticket.summary ?? "");
+  const [acceptanceCriteria, setAcceptanceCriteria] = useState((ticket.acceptance_criteria ?? []).join("\n"));
+  const [linkedFiles, setLinkedFiles] = useState((ticket.linked_files ?? []).join("\n"));
+  const [linkedDecisions, setLinkedDecisions] = useState((ticket.linked_decisions ?? []).join("\n"));
+  const [linkedThreads, setLinkedThreads] = useState((ticket.linked_threads ?? []).join("\n"));
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <ModalFrame title={`Edit ${ticket.id}`} onClose={onClose}>
+      <form
+        onSubmit={async (event) => {
+          event.preventDefault();
+          if (!title.trim()) return;
+          setBusy(true);
+          await onSave({
+            ...ticket,
+            title: title.trim(),
+            status,
+            priority,
+            summary: summary.trim(),
+            acceptance_criteria: lines(acceptanceCriteria),
+            linked_files: lines(linkedFiles),
+            linked_decisions: lines(linkedDecisions),
+            linked_threads: lines(linkedThreads),
+          });
+          setBusy(false);
+        }}
+        className="flex flex-col gap-2.5"
+      >
+        <input value={title} onChange={(event) => setTitle(event.target.value)} className={inputClass} autoFocus />
+        <div className="grid grid-cols-2 gap-2">
+          <select value={status} onChange={(event) => setStatus(event.target.value as TicketStatus)} className={inputClass}>
+            <option value="idea">Idea</option>
+            <option value="now">Now</option>
+            <option value="next">Next</option>
+            <option value="later">Later</option>
+            <option value="blocked">Blocked</option>
+            <option value="done">Done</option>
+          </select>
+          <select value={priority} onChange={(event) => setPriority(event.target.value as Priority)} className={inputClass}>
+            <option value="low">Low priority</option>
+            <option value="medium">Medium priority</option>
+            <option value="high">High priority</option>
+          </select>
+        </div>
+        <FieldLabel>Summary</FieldLabel>
+        <textarea value={summary} onChange={(event) => setSummary(event.target.value)} className={textareaClass} />
+        <FieldLabel>Acceptance criteria, one per line</FieldLabel>
+        <textarea value={acceptanceCriteria} onChange={(event) => setAcceptanceCriteria(event.target.value)} className={textareaClass} />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div>
+            <FieldLabel>Files</FieldLabel>
+            <textarea value={linkedFiles} onChange={(event) => setLinkedFiles(event.target.value)} className={textareaClass} />
+          </div>
+          <div>
+            <FieldLabel>Decisions</FieldLabel>
+            <textarea value={linkedDecisions} onChange={(event) => setLinkedDecisions(event.target.value)} className={textareaClass} />
+          </div>
+          <div>
+            <FieldLabel>Threads</FieldLabel>
+            <textarea value={linkedThreads} onChange={(event) => setLinkedThreads(event.target.value)} className={textareaClass} />
+          </div>
+        </div>
+        <div className="flex gap-2 justify-end">
+          <Btn type="button" variant="ghost" onClick={onClose}>Cancel</Btn>
+          <Btn type="submit" variant="primary" disabled={busy || !title.trim()}>
+            <Check size={11} /> Save ticket
+          </Btn>
+        </div>
+      </form>
+    </ModalFrame>
+  );
+}
+
+function FileLinkModal({
+  mode,
+  project,
+  selectedTicket,
+  onClose,
+  onAddFile,
+  onAddLink,
+}: {
+  mode: FileModalMode;
+  project: WaymarkProject;
+  selectedTicket: Ticket | null;
+  onClose: () => void;
+  onAddFile: (ticketId: string, path: string) => Promise<void>;
+  onAddLink: (link: LinkRecord) => Promise<void>;
+}) {
+  const [ticketId, setTicketId] = useState(selectedTicket?.id ?? project.tickets[0]?.id ?? "");
+  const [path, setPath] = useState("");
+  const [label, setLabel] = useState("");
+  const [url, setUrl] = useState("");
+  const [type, setType] = useState<LinkRecord["type"]>("doc");
+  const [environment, setEnvironment] = useState<LinkRecord["environment"]>("other");
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <ModalFrame title={mode === "file" ? "Add linked file" : "Add project link"} onClose={onClose}>
+      <form
+        onSubmit={async (event) => {
+          event.preventDefault();
+          setBusy(true);
+          if (mode === "file") {
+            await onAddFile(ticketId, path);
+          } else {
+            await onAddLink({
+              id: recordId(label || url),
+              label: label.trim() || url.trim(),
+              url: url.trim(),
+              type,
+              environment,
+            });
+          }
+          setBusy(false);
+        }}
+        className="flex flex-col gap-2.5"
+      >
+        {mode === "file" ? (
+          <>
+            <FieldLabel>Ticket</FieldLabel>
+            <select value={ticketId} onChange={(event) => setTicketId(event.target.value)} className={inputClass}>
+              {project.tickets.map((ticket) => (
+                <option key={ticket.id} value={ticket.id}>{ticket.title}</option>
+              ))}
+            </select>
+            <FieldLabel>Path</FieldLabel>
+            <input
+              value={path}
+              onChange={(event) => setPath(event.target.value)}
+              placeholder="src/App.tsx or ~/code/project/file.md"
+              className={inputClass}
+              autoFocus
+            />
+          </>
+        ) : (
+          <>
+            <FieldLabel>Label</FieldLabel>
+            <input value={label} onChange={(event) => setLabel(event.target.value)} placeholder="Design, production, docs..." className={inputClass} autoFocus />
+            <FieldLabel>URL</FieldLabel>
+            <input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://..." className={inputClass} />
+            <div className="grid grid-cols-2 gap-2">
+              <select value={type} onChange={(event) => setType(event.target.value as LinkRecord["type"])} className={inputClass}>
+                <option value="doc">Doc</option>
+                <option value="design">Design</option>
+                <option value="repo">Repo</option>
+                <option value="deploy">Deploy</option>
+                <option value="dashboard">Dashboard</option>
+                <option value="other">Other</option>
+              </select>
+              <select value={environment} onChange={(event) => setEnvironment(event.target.value as LinkRecord["environment"])} className={inputClass}>
+                <option value="production">Production</option>
+                <option value="staging">Staging</option>
+                <option value="preview">Preview</option>
+                <option value="local">Local</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          </>
+        )}
+        <div className="flex gap-2 justify-end">
+          <Btn type="button" variant="ghost" onClick={onClose}>Cancel</Btn>
+          <Btn
+            type="submit"
+            variant="primary"
+            disabled={busy || (mode === "file" ? !ticketId || !path.trim() : !url.trim())}
+          >
+            <Plus size={11} /> Add {mode}
+          </Btn>
+        </div>
+      </form>
+    </ModalFrame>
+  );
+}
+
+function ModalFrame({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  return (
+    <>
+      <div className="fixed inset-0 bg-[oklch(0_0_0_/_0.45)] z-40" onClick={onClose} />
+      <div className="fixed top-16 left-1/2 -translate-x-1/2 w-[680px] max-w-[calc(100vw-32px)] max-h-[calc(100vh-96px)] overflow-y-auto bg-surface-2 border border-line rounded-[5px] p-4 shadow-[0_18px_60px_oklch(0_0_0_/_0.6)] z-50">
+        <h3 className="m-0 mb-3 text-[13px] font-semibold">{title}</h3>
+        {children}
+      </div>
+    </>
   );
 }
 
@@ -1857,53 +3259,148 @@ function CaptureModal({
 }: {
   project: WaymarkProject;
   onClose: () => void;
-  onCreated: (title: string, status: TicketStatus, summary: string) => Promise<void>;
+  onCreated: (payload: CapturePayload) => Promise<void>;
 }) {
+  const [kind, setKind] = useState<CaptureKind>("ticket");
   const [title, setTitle] = useState("");
   const [summary, setSummary] = useState("");
   const [status, setStatus] = useState<TicketStatus>("now");
+  const [priority, setPriority] = useState<Priority>("medium");
+  const [acceptanceCriteria, setAcceptanceCriteria] = useState("");
+  const [linkedFiles, setLinkedFiles] = useState("");
+  const [linkedDecisions, setLinkedDecisions] = useState("");
+  const [linkedThreads, setLinkedThreads] = useState("");
+  const [linkedTickets, setLinkedTickets] = useState("");
+  const [provider, setProvider] = useState<ThreadRecord["provider"]>("codex");
+  const [threadStatus, setThreadStatus] = useState<ThreadRecord["status"]>("active");
+  const [url, setUrl] = useState("");
+  const [summaryFile, setSummaryFile] = useState("");
   const [busy, setBusy] = useState(false);
 
   return (
-    <>
-      <div className="fixed inset-0 bg-[oklch(0_0_0_/_0.45)] z-40" onClick={onClose} />
+    <ModalFrame title={`Capture into ${project.config.name}`} onClose={onClose}>
       <form
         onSubmit={async (event) => {
           event.preventDefault();
           if (!title.trim()) return;
           setBusy(true);
-          await onCreated(title.trim(), status, summary.trim());
+          if (kind === "ticket") {
+            await onCreated({
+              kind,
+              title: title.trim(),
+              status,
+              priority,
+              summary: summary.trim(),
+              acceptanceCriteria,
+              linkedFiles,
+              linkedDecisions,
+              linkedThreads,
+            });
+          } else if (kind === "thread") {
+            await onCreated({
+              kind,
+              title: title.trim(),
+              provider,
+              threadStatus,
+              url,
+              summaryFile,
+              linkedTickets,
+            });
+          } else {
+            await onCreated({
+              kind,
+              title: title.trim(),
+              summary: summary.trim(),
+              body: summary,
+              linkedTickets,
+            });
+          }
           setBusy(false);
         }}
-        className="fixed top-24 left-1/2 -translate-x-1/2 w-[540px] max-w-[calc(100vw-32px)] bg-surface-2 border border-line rounded-[5px] p-4 flex flex-col gap-2.5 shadow-[0_18px_60px_oklch(0_0_0_/_0.6)] z-50"
+        className="flex flex-col gap-2.5"
       >
-        <h3 className="m-0 text-[13px] font-semibold">Capture into {project.config.name}</h3>
-        <div className="grid grid-cols-[1fr_140px] gap-2">
+        <div className="grid grid-cols-4 gap-1">
+          {(["ticket", "idea", "decision", "thread"] as CaptureKind[]).map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => setKind(option)}
+              className={cx(
+                "h-7 rounded-[3px] border text-[11.5px] capitalize",
+                kind === option
+                  ? "bg-accent text-accent-ink border-accent-deep font-semibold"
+                  : "bg-surface-input-2 border-line-soft text-ink-faint hover:text-ink",
+              )}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+        <div className={cx("grid gap-2", kind === "ticket" ? "grid-cols-[1fr_140px_120px]" : "grid-cols-1")}>
           <input
-            placeholder="Ticket title"
+            placeholder={`${kind[0].toUpperCase()}${kind.slice(1)} title`}
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             autoFocus
-            className="w-full bg-surface-input-2 border border-line-soft text-ink rounded-[3px] px-2 py-1.5 text-[12.5px] outline-0 focus:border-accent-deep"
+            className={inputClass}
           />
-          <select
-            value={status}
-            onChange={(event) => setStatus(event.target.value as TicketStatus)}
-            className="w-full bg-surface-input-2 border border-line-soft text-ink rounded-[3px] px-2 py-1.5 text-[12.5px] outline-0 focus:border-accent-deep"
-          >
-            <option value="now">Now</option>
-            <option value="next">Next</option>
-            <option value="later">Later</option>
-            <option value="blocked">Blocked</option>
-            <option value="idea">Idea</option>
-          </select>
+          {kind === "ticket" ? (
+            <>
+              <select value={status} onChange={(event) => setStatus(event.target.value as TicketStatus)} className={inputClass}>
+                <option value="now">Now</option>
+                <option value="next">Next</option>
+                <option value="later">Later</option>
+                <option value="blocked">Blocked</option>
+                <option value="idea">Idea</option>
+              </select>
+              <select value={priority} onChange={(event) => setPriority(event.target.value as Priority)} className={inputClass}>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </>
+          ) : null}
         </div>
         <textarea
-          placeholder="Short summary (optional)"
+          placeholder={kind === "ticket" ? "Short summary" : "Notes or summary"}
           value={summary}
           onChange={(event) => setSummary(event.target.value)}
-          className="w-full bg-surface-input-2 border border-line-soft text-ink rounded-[3px] px-2 py-1.5 outline-0 focus:border-accent-deep min-h-[70px] resize-y leading-[1.45] font-mono text-[11.5px]"
+          className={textareaClass}
         />
+        {kind === "ticket" ? (
+          <>
+            <FieldLabel>Acceptance criteria, one per line</FieldLabel>
+            <textarea value={acceptanceCriteria} onChange={(event) => setAcceptanceCriteria(event.target.value)} className={textareaClass} />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <textarea placeholder="Linked files" value={linkedFiles} onChange={(event) => setLinkedFiles(event.target.value)} className={textareaClass} />
+              <textarea placeholder="Decision IDs" value={linkedDecisions} onChange={(event) => setLinkedDecisions(event.target.value)} className={textareaClass} />
+              <textarea placeholder="Thread IDs" value={linkedThreads} onChange={(event) => setLinkedThreads(event.target.value)} className={textareaClass} />
+            </div>
+          </>
+        ) : kind === "thread" ? (
+          <>
+            <div className="grid grid-cols-2 gap-2">
+              <select value={provider} onChange={(event) => setProvider(event.target.value as ThreadRecord["provider"])} className={inputClass}>
+                <option value="codex">Codex</option>
+                <option value="claude">Claude</option>
+                <option value="chatgpt">ChatGPT</option>
+                <option value="cursor">Cursor</option>
+                <option value="other">Other</option>
+              </select>
+              <select value={threadStatus} onChange={(event) => setThreadStatus(event.target.value as ThreadRecord["status"])} className={inputClass}>
+                <option value="active">Active</option>
+                <option value="completed">Completed</option>
+                <option value="paused">Paused</option>
+                <option value="abandoned">Abandoned</option>
+              </select>
+            </div>
+            <input placeholder="Thread URL (optional)" value={url} onChange={(event) => setUrl(event.target.value)} className={inputClass} />
+            <input placeholder="Summary file path (optional)" value={summaryFile} onChange={(event) => setSummaryFile(event.target.value)} className={inputClass} />
+            <textarea placeholder="Linked ticket IDs, one per line" value={linkedTickets} onChange={(event) => setLinkedTickets(event.target.value)} className={textareaClass} />
+          </>
+        ) : (
+          <textarea placeholder="Linked ticket IDs, one per line" value={linkedTickets} onChange={(event) => setLinkedTickets(event.target.value)} className={textareaClass} />
+        )}
         <div className="flex gap-2 justify-end">
           <Btn type="button" variant="ghost" onClick={onClose}>Cancel</Btn>
           <Btn type="submit" variant="primary" disabled={busy || !title.trim()}>
@@ -1911,6 +3408,6 @@ function CaptureModal({
           </Btn>
         </div>
       </form>
-    </>
+    </ModalFrame>
   );
 }
