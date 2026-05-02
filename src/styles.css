@@ -67,21 +67,28 @@
   --grid-template-columns-proj: 16px minmax(0, 1fr) auto;
 }
 
-.app-titlebar {
-  grid-template-columns: var(--shell-left, 240px) minmax(0, 1fr) var(--shell-right, 380px);
-}
-
 .app-shell {
   grid-template-columns: var(--shell-left, 240px) 6px minmax(0, 1fr) 6px var(--shell-right, 380px);
 }
 
-.app-titlebar {
-  pointer-events: none;
+.app-toolbar {
+  grid-template-columns: var(--shell-left, 240px) minmax(0, 1fr) var(--shell-right, 380px);
+  min-height: 36px;
 }
 
-.app-titlebar .app-titlebar-actions,
-.app-titlebar .app-window-dots {
-  pointer-events: auto;
+.app-toolbar-brand {
+  padding-left: 78px;
+  height: 100%;
+}
+
+.app-toolbar-path,
+.app-toolbar-actions {
+  height: 100%;
+}
+
+.app-toolbar-actions,
+.app-toolbar button {
+  -webkit-app-region: no-drag;
 }
 
 .pane-resizer {
@@ -167,13 +174,18 @@
 }
 
 @media (max-width: 900px) {
-  .app-titlebar {
-    grid-template-columns: minmax(0, 1fr);
-    pointer-events: auto;
+  .app-toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .app-window-dots,
-  .app-titlebar-actions,
+  .app-toolbar-brand {
+    display: none;
+  }
+
+  .app-toolbar-path {
+    justify-content: flex-start;
+  }
+
   .sidebar-shell,
   .inspector-shell,
   .pane-resizer {

@@ -16,7 +16,6 @@ import {
   Plus,
   RefreshCw,
   Search,
-  Settings,
   Sliders,
   Sparkles,
   Triangle,
@@ -38,6 +37,9 @@ import type {
   LinkRecord,
   NoteRecord,
   Priority,
+  ProjectConfig,
+  ProjectStage,
+  ProjectStatus,
   ThreadRecord,
   Ticket,
   TicketStatus,
@@ -50,6 +52,7 @@ import {
   createSampleWorkspace,
   createWorkspace,
   createNote,
+  createProject,
   loadWorkspace,
   saveGeneratedPrompts,
   saveLinks,
@@ -436,6 +439,7 @@ export default function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [captureOpen, setCaptureOpen] = useState(false);
   const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false);
+  const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [editingTicketId, setEditingTicketId] = useState<string | null>(null);
   const [fileModalMode, setFileModalMode] = useState<FileModalMode | null>(null);
   const [search, setSearch] = useState("");
@@ -512,6 +516,27 @@ export default function App() {
       await refresh(path);
       setCreateWorkspaceOpen(false);
       setNotice(`Created workspace at ${path}.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+      throw caught;
+    }
+  }
+
+  function requestCreateProject() {
+    setCreateProjectOpen(true);
+    if (!isTauri()) {
+      setNotice("Run Waymark through Tauri to create a local project.");
+    }
+  }
+
+  async function handleCreateProject(config: ProjectConfig) {
+    if (!workspace) return;
+    try {
+      await createProject(workspace, config);
+      await refresh(rootPath);
+      setSelectedSlug(config.slug);
+      setCreateProjectOpen(false);
+      setNotice(`Created project ${config.name}.`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
       throw caught;
@@ -842,12 +867,26 @@ export default function App() {
 
   return (
     <div className="app-frame w-screen h-screen bg-surface grid grid-rows-[36px_1fr] overflow-hidden">
-      <Titlebar
+      <WorkspaceToolbar
         workspace={workspace}
         project={selectedProject}
         rootPath={rootPath}
-        onSettings={() => setNotice("Settings are file-native for now: edit the workspace YAML and reload.")}
         style={shellStyle}
+        onRefresh={() => refresh()}
+        onOpenFolder={() => {
+          if (!isTauri()) {
+            setNotice("Run Waymark through Tauri to open the workspace folder.");
+            return;
+          }
+          openPath(rootPath);
+        }}
+        onOpenConfig={() => {
+          if (!isTauri()) {
+            setNotice("Run Waymark through Tauri to open waymark.yaml.");
+            return;
+          }
+          openPath(`${rootPath}/waymark.yaml`);
+        }}
       />
       <div
         className="app-shell grid grid-cols-shell xl:grid-cols-shell-wide h-full min-h-0 min-w-0 overflow-hidden"
@@ -865,9 +904,7 @@ export default function App() {
           onSeed={handleSeed}
           onCreateWorkspace={requestCreateWorkspace}
           onChooseWorkspace={handleChooseWorkspace}
-          onRequestProject={() =>
-            setNotice("Add projects by creating a projects/<slug>/project.yaml folder, then reload.")
-          }
+          onRequestProject={requestCreateProject}
         />
         <PaneResizeHandle
           side="left"
@@ -927,8 +964,11 @@ export default function App() {
                   No projects in this workspace
                 </h2>
                 <p className="m-0 max-w-[460px] text-[13px] leading-[1.55]">
-                  Add a <code>project.yaml</code> under <code>{workspace.config.projects_dir}/</code> and refresh.
+                  Create a project to add its readable <code>project.yaml</code>, tickets, links, and thread files.
                 </p>
+                <Btn variant="primary" onClick={requestCreateProject}>
+                  <Plus size={13} /> Create project
+                </Btn>
               </div>
             ) : (
               <CockpitContent
@@ -1011,6 +1051,14 @@ export default function App() {
           onCreate={handleCreateWorkspace}
         />
       ) : null}
+      {createProjectOpen ? (
+        <CreateProjectModal
+          tauri={isTauri()}
+          workspace={workspace}
+          onClose={() => setCreateProjectOpen(false)}
+          onCreate={handleCreateProject}
+        />
+      ) : null}
       {editingTicket && selectedProject ? (
         <TicketEditModal
           ticket={editingTicket}
@@ -1047,36 +1095,37 @@ function Notice({ tone, children }: { tone: "ok" | "warn" | "err"; children: Rea
   );
 }
 
-/* ------------------------------- titlebar ------------------------------- */
-
-function Titlebar({
+function WorkspaceToolbar({
   workspace,
   project,
   rootPath,
-  onSettings,
   style,
+  onRefresh,
+  onOpenFolder,
+  onOpenConfig,
 }: {
   workspace: WorkspaceData | null;
   project: WaymarkProject | null;
   rootPath: string;
-  onSettings: () => void;
   style: CSSProperties;
+  onRefresh: () => void;
+  onOpenFolder: () => void;
+  onOpenConfig: () => void;
 }) {
   return (
     <div
-      className="app-titlebar grid grid-cols-shell xl:grid-cols-shell-wide items-center border-b border-line bg-gradient-to-b from-[oklch(0.235_0.006_250)] to-[oklch(0.205_0.006_250)] select-none h-9 overflow-hidden"
+      className="app-toolbar grid items-center border-b border-line bg-surface-rail select-none min-w-0 overflow-hidden"
       style={style}
     >
-      <div className="app-window-dots flex gap-2 pl-3.5">
-        <span className="w-3 h-3 rounded-full bg-[oklch(0.66_0.18_25)]" />
-        <span className="w-3 h-3 rounded-full bg-[oklch(0.78_0.14_90)]" />
-        <span className="w-3 h-3 rounded-full bg-[oklch(0.72_0.13_150)]" />
+      <div data-tauri-drag-region className="app-toolbar-brand flex items-center gap-2 px-3.5 min-w-0">
+        <Triangle size={12} className="text-accent shrink-0" fill="currentColor" strokeWidth={0} />
+        <span className="text-[12px] font-semibold text-ink truncate">Waymark</span>
       </div>
-      <div className="flex items-center justify-center gap-2 font-mono text-[11.5px] text-ink-faint min-w-0 px-3 overflow-hidden">
+      <div data-tauri-drag-region className="app-toolbar-path flex items-center justify-center gap-2 font-mono text-[11px] text-ink-faint min-w-0 px-3 overflow-hidden">
         <span className="truncate min-w-0 text-ink-soft" title={rootPath}>{rootPath}</span>
         <span className="text-ink-mute shrink-0">/</span>
         <span className="text-ink-soft shrink-0 truncate">
-          {project?.config.name ?? workspace?.config.name ?? "Waymark"}
+          {project?.config.name ?? workspace?.config.name ?? "No workspace"}
         </span>
         {project ? (
           <>
@@ -1085,25 +1134,30 @@ function Titlebar({
           </>
         ) : null}
       </div>
-      <div className="app-titlebar-actions flex items-center justify-end gap-1 pr-2.5 shrink-0 whitespace-nowrap">
-        <TitlebarButton icon={GitBranch}>main</TitlebarButton>
-        <TitlebarButton icon={Settings} aria-label="Settings" onClick={onSettings} />
+      <div className="app-toolbar-actions flex items-center justify-end gap-1 px-2.5 min-w-0 whitespace-nowrap">
+        <span className="h-[22px] px-2 rounded-[3px] text-[11px] text-ink-faint border border-line-soft bg-surface-2 inline-flex items-center gap-1.5">
+          <GitBranch size={12} /> main
+        </span>
+        <ToolbarButton onClick={onRefresh} title="Reload workspace">
+          <RefreshCw size={12} /> Reload
+        </ToolbarButton>
+        <ToolbarButton onClick={onOpenFolder} title="Open workspace folder">
+          <FolderOpen size={12} /> Folder
+        </ToolbarButton>
+        <ToolbarButton onClick={onOpenConfig} title="Open waymark.yaml">
+          <FileText size={12} /> Config
+        </ToolbarButton>
       </div>
     </div>
   );
 }
 
-function TitlebarButton({
-  icon: Icon,
-  children,
-  ...rest
-}: ButtonHTMLAttributes<HTMLButtonElement> & { icon: LucideIcon }) {
+function ToolbarButton({ children, ...rest }: ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
       {...rest}
-      className="h-[22px] px-2 rounded-[3px] text-[11px] text-ink-soft hover:bg-surface-4 hover:text-ink inline-flex items-center gap-1.5"
+      className="h-[22px] px-2 rounded-[3px] text-[11px] text-ink-soft border border-transparent hover:border-line-soft hover:bg-surface-3 hover:text-ink inline-flex items-center gap-1.5"
     >
-      <Icon size={12} />
       {children}
     </button>
   );
@@ -1264,7 +1318,7 @@ function Sidebar({
             onClick={onRequestProject}
             className="w-[18px] h-[18px] grid place-items-center rounded-[3px] text-ink-faint hover:bg-surface-3 hover:text-ink"
             aria-label="New project"
-            title="Project creation is file-native: create a project folder, then reload."
+            title="Create project"
           >
             <Plus size={12} />
           </button>
@@ -3033,6 +3087,190 @@ function CreateWorkspaceModal({
           <Btn type="button" variant="ghost" onClick={onClose}>Cancel</Btn>
           <Btn type="submit" variant="primary" disabled={!tauri || busy || !path.trim()}>
             <Plus size={11} /> Create workspace
+          </Btn>
+        </div>
+      </form>
+    </ModalFrame>
+  );
+}
+
+function CreateProjectModal({
+  tauri,
+  workspace,
+  onClose,
+  onCreate,
+}: {
+  tauri: boolean;
+  workspace: WorkspaceData | null;
+  onClose: () => void;
+  onCreate: (config: ProjectConfig) => Promise<void>;
+}) {
+  const [name, setName] = useState("");
+  const [slug, setSlug] = useState("");
+  const [summary, setSummary] = useState("");
+  const [currentFocus, setCurrentFocus] = useState("");
+  const [stage, setStage] = useState<ProjectStage>("prototype");
+  const [status, setStatus] = useState<ProjectStatus>("active");
+  const [repoName, setRepoName] = useState("");
+  const [repoPath, setRepoPath] = useState("");
+  const [repoUrl, setRepoUrl] = useState("");
+  const [slugEdited, setSlugEdited] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  function updateName(value: string) {
+    setName(value);
+    if (!slugEdited) setSlug(recordId(value));
+  }
+
+  return (
+    <ModalFrame title="Create project" onClose={onClose}>
+      <form
+        onSubmit={async (event) => {
+          event.preventDefault();
+          const cleanName = name.trim();
+          const cleanSlug = recordId(slug || name);
+          const cleanSummary = summary.trim();
+          if (!workspace) {
+            setError("Open or create a workspace first.");
+            return;
+          }
+          if (!cleanName || !cleanSlug || !cleanSummary) {
+            setError("Name, slug, and summary are required.");
+            return;
+          }
+          if (repoUrl.trim() && !/^https?:\/\//.test(repoUrl.trim())) {
+            setError("Repo URL must start with http:// or https://.");
+            return;
+          }
+
+          const repo =
+            repoName.trim() || repoPath.trim() || repoUrl.trim()
+              ? {
+                  id: recordId(repoName || cleanName),
+                  name: repoName.trim() || `${cleanName} repo`,
+                  ...(repoPath.trim() ? { path: repoPath.trim() } : {}),
+                  ...(repoUrl.trim() ? { url: repoUrl.trim() } : {}),
+                }
+              : undefined;
+
+          const config: ProjectConfig = {
+            version: 1,
+            name: cleanName,
+            slug: cleanSlug,
+            status,
+            stage,
+            summary: cleanSummary,
+            current_focus: currentFocus.trim() || undefined,
+            tags: [],
+            repos: repo ? [repo] : [],
+            links: {},
+          };
+
+          setBusy(true);
+          setError(null);
+          try {
+            await onCreate(config);
+          } catch (caught) {
+            setError(caught instanceof Error ? caught.message : String(caught));
+          } finally {
+            setBusy(false);
+          }
+        }}
+        className="flex flex-col gap-3"
+      >
+        <p className="m-0 text-[12.5px] leading-[1.55] text-ink-faint">
+          Waymark will create <code>{workspace?.config.projects_dir ?? "projects"}/&lt;slug&gt;</code> with readable YAML/Markdown files.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-[1.4fr_1fr] gap-2">
+          <div>
+            <FieldLabel>Name</FieldLabel>
+            <input
+              value={name}
+              onChange={(event) => updateName(event.target.value)}
+              placeholder="My Project"
+              className={cx(inputClass, "mt-1")}
+              autoFocus
+            />
+          </div>
+          <div>
+            <FieldLabel>Slug</FieldLabel>
+            <input
+              value={slug}
+              onChange={(event) => {
+                setSlugEdited(true);
+                setSlug(recordId(event.target.value));
+              }}
+              placeholder="my-project"
+              className={cx(inputClass, "mt-1 font-mono")}
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <FieldLabel>Stage</FieldLabel>
+            <select value={stage} onChange={(event) => setStage(event.target.value as ProjectStage)} className={cx(inputClass, "mt-1")}>
+              <option value="idea">Idea</option>
+              <option value="spec">Spec</option>
+              <option value="prototype">Prototype</option>
+              <option value="mvp">MVP</option>
+              <option value="alpha">Alpha</option>
+              <option value="beta">Beta</option>
+              <option value="production">Production</option>
+            </select>
+          </div>
+          <div>
+            <FieldLabel>Status</FieldLabel>
+            <select value={status} onChange={(event) => setStatus(event.target.value as ProjectStatus)} className={cx(inputClass, "mt-1")}>
+              <option value="active">Active</option>
+              <option value="exploring">Exploring</option>
+              <option value="paused">Paused</option>
+              <option value="archived">Archived</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <FieldLabel>Summary</FieldLabel>
+          <textarea
+            value={summary}
+            onChange={(event) => setSummary(event.target.value)}
+            placeholder="What is this project for?"
+            className={cx(textareaClass, "mt-1 min-h-[62px]")}
+          />
+        </div>
+        <div>
+          <FieldLabel>Current focus</FieldLabel>
+          <input
+            value={currentFocus}
+            onChange={(event) => setCurrentFocus(event.target.value)}
+            placeholder="What should humans and agents pay attention to right now?"
+            className={cx(inputClass, "mt-1")}
+          />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div>
+            <FieldLabel>Repo name</FieldLabel>
+            <input value={repoName} onChange={(event) => setRepoName(event.target.value)} placeholder="App repo" className={cx(inputClass, "mt-1")} />
+          </div>
+          <div>
+            <FieldLabel>Repo path</FieldLabel>
+            <input value={repoPath} onChange={(event) => setRepoPath(event.target.value)} placeholder="~/code/app" className={cx(inputClass, "mt-1 font-mono")} />
+          </div>
+          <div>
+            <FieldLabel>Repo URL</FieldLabel>
+            <input value={repoUrl} onChange={(event) => setRepoUrl(event.target.value)} placeholder="https://github.com/..." className={cx(inputClass, "mt-1")} />
+          </div>
+        </div>
+        {!tauri ? (
+          <Notice tone="warn">
+            <AlertTriangle size={13} /> Project creation writes local files, so it is only enabled in Tauri.
+          </Notice>
+        ) : null}
+        {error ? <Notice tone="err"><AlertTriangle size={13} /> {error}</Notice> : null}
+        <div className="flex gap-2 justify-end">
+          <Btn type="button" variant="ghost" onClick={onClose}>Cancel</Btn>
+          <Btn type="submit" variant="primary" disabled={!tauri || busy || !workspace || !name.trim() || !summary.trim()}>
+            <Plus size={11} /> Create project
           </Btn>
         </div>
       </form>

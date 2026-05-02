@@ -453,6 +453,25 @@ export async function createWorkspace(rootPath: string, name = "Waymark Workspac
   );
 }
 
+export async function createProject(workspace: WorkspaceData, config: ProjectConfig) {
+  const projectsDir = workspace.config.projects_dir || "projects";
+  const projectRoot = joinPath(workspace.rootPath, projectsDir, config.slug);
+  const projectYamlPath = joinPath(projectRoot, "project.yaml");
+  if (await pathExists(projectYamlPath)) {
+    throw new Error(`Project already exists at ${projectYamlPath}`);
+  }
+
+  await createDirAll(projectRoot);
+  await createDirAll(joinPath(projectRoot, "ideas"));
+  await createDirAll(joinPath(projectRoot, "decisions"));
+  await createDirAll(joinPath(projectRoot, "ai", "prompts"));
+  await createDirAll(joinPath(projectRoot, "ai", "thread-summaries"));
+  await writeTextFile(joinPath(projectRoot, "project.yaml"), dumpYaml(config));
+  await writeTextFile(joinPath(projectRoot, "tickets.yaml"), dumpYaml({ version: 1, tickets: [] }));
+  await writeTextFile(joinPath(projectRoot, "links.yaml"), dumpYaml({ version: 1, links: [] }));
+  await writeTextFile(joinPath(projectRoot, "threads.yaml"), dumpYaml({ version: 1, threads: [] }));
+}
+
 export async function saveTickets(project: WaymarkProject, tickets: Ticket[]) {
   await writeTextFile(joinPath(project.rootPath, "tickets.yaml"), dumpYaml({ version: 1, tickets }));
 }
