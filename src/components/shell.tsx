@@ -255,11 +255,30 @@ export function Sidebar({
       </div>
 
       <div className="border-t border-line-soft px-3 py-2 flex items-center gap-2 text-[11px] text-ink-faint whitespace-nowrap overflow-hidden">
-        <span className="w-1.5 h-1.5 rounded-full bg-lane-done shadow-[0_0_0_3px_oklch(0.74_0.13_150_/_0.18)] shrink-0" />
-        <span className="shrink-0">File-native</span>
-        <span className="ml-auto font-mono text-[10.5px] text-ink-mute shrink-0">
-          {workspace ? "manual writes" : "—"}
+        <span
+          className={cx(
+            "w-1.5 h-1.5 rounded-full shrink-0",
+            workspace
+              ? counts.warnings > 0
+                ? "bg-warn shadow-[0_0_0_3px_oklch(0.82_0.14_90_/_0.16)]"
+                : "bg-lane-done shadow-[0_0_0_3px_oklch(0.74_0.13_150_/_0.18)]"
+              : "bg-ink-mute",
+          )}
+        />
+        <span className="shrink-0 text-ink-soft">{workspace ? "Workspace loaded" : "No workspace"}</span>
+        <span className="ml-auto font-mono text-[10.5px] text-ink-mute truncate">
+          {workspace
+            ? `${workspace.projects.length} project${workspace.projects.length === 1 ? "" : "s"}${counts.warnings ? ` · ${counts.warnings} warning${counts.warnings === 1 ? "" : "s"}` : ""}`
+            : "Open or create"}
         </span>
+        <button
+          onClick={onRefresh}
+          className="w-[18px] h-[18px] grid place-items-center rounded-[3px] text-ink-faint hover:bg-surface-3 hover:text-ink shrink-0"
+          aria-label="Reload workspace"
+          title="Reload workspace"
+        >
+          <RefreshCw size={11} />
+        </button>
       </div>
     </aside>
   );
