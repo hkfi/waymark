@@ -13,6 +13,8 @@
 - Use functional React components and typed props for new extracted components.
 - Prefer derived values with `useMemo` only when it improves clarity or avoids repeated non-trivial work.
 - Keep local state near the workflow that owns it.
+- Split app-level React state by ownership using focused hooks and context providers instead of broad controller hooks that return large objects.
+- Let composed shell/feature containers read the smallest context slice they need; keep lower-level cockpit UI components mostly prop-driven and reusable.
 - Avoid adding global state libraries until there is a clear cross-screen need.
 - Use `lucide-react` for icons.
 

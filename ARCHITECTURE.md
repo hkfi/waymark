@@ -41,7 +41,16 @@ Do not add SQLite as canonical storage.
 
 ## Main Modules
 
-- `src/App.tsx`: primary cockpit UI and interaction orchestration.
+- `src/App.tsx`: thin application entrypoint that mounts the cockpit provider and shell.
+- `src/app/AppProvider.tsx`: focused React contexts for workspace data, selection, navigation, filters, layout, modals, feedback, and project write actions.
+- `src/app/AppShell.tsx`: composed cockpit regions that subscribe to only the context slices they render or invoke.
+- `src/app/hooks/`: small state-owner hooks for workspace loading, selection, navigation, filters, pane layout, modal state, feedback, and explicit project writes.
+- `src/app/model.ts`: cockpit UI types, constants, and pure helpers shared by views.
+- `src/components/primitives.tsx`: reusable cockpit controls such as buttons, cards, chips, table rows, and notices.
+- `src/components/shell.tsx`: workspace toolbar, sidebar navigation, main header, and resizable shell chrome.
+- `src/components/views.tsx`: main cockpit content views for overview, queue, decisions, threads, files, inbox, and activity.
+- `src/components/inspector.tsx`: right-side ticket, handoff, thread, and note inspector panels.
+- `src/components/modals.tsx`: explicit user-write workflows for workspace/project creation, capture, ticket editing, and file/link attachment.
 - `src/workspace.ts`: file contract, YAML/Markdown parsing, validation, sample workspace creation, controlled writes, and prompt generation.
 - `src/types.ts`: shared TypeScript model for workspace/project objects.
 - `src/tauri.ts`: typed frontend bridge to native commands.
