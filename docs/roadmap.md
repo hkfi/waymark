@@ -21,6 +21,7 @@ Included:
 Explicitly promoted:
 
 - Codex-backed Assistant for project-memory brainstorming and review-gated drafts through the user's local Codex auth
+- GitHub Release based app updates, gated by intentional version bumps and installed only after a user clicks the update indicator
 
 Not included:
 

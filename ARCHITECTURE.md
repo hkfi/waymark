@@ -12,6 +12,7 @@ Waymark workspace folder
   -> Cockpit UI
   -> Explicit user writes back to Markdown/YAML
   -> Optional user-confirmed Codex assistant drafts
+  -> Optional signed GitHub Release app updates
 ```
 
 ## Source Of Truth
@@ -54,6 +55,7 @@ Do not add SQLite as canonical storage.
 - `src/components/modals.tsx`: explicit user-write workflows for workspace/project creation, capture, ticket editing, and file/link attachment.
 - `src/components/assistant.tsx`: optional Codex-backed project-memory assistant with confirmation, draft review, and explicit accepted writes.
 - `src/assistant.ts`: structured draft schema, Codex prompt construction, and client-side draft validation.
+- `src/app/hooks/useAppUpdates.ts`: Tauri updater state for checking GitHub Release metadata, exposing update availability, and installing only after a user action.
 - `src/workspace.ts`: file contract, YAML/Markdown parsing, validation, sample workspace creation, controlled writes, and prompt generation.
 - `src/types.ts`: shared TypeScript model for workspace/project objects.
 - `src/tauri.ts`: typed frontend bridge to native commands.
@@ -124,6 +126,25 @@ The assistant should not:
 - scrape private Codex, ChatGPT, Claude, or Cursor storage
 - let Codex directly mutate the workspace for this feature
 - make AI connectivity required for manual project workflows
+
+## App Update Model
+
+Waymark uses Tauri's signed updater and GitHub Releases. `main` should remain releasable, but desktop updates are published only when the app version is intentionally bumped. The release workflow creates signed updater artifacts and `latest.json`; the app checks that static metadata and shows an update indicator only when a newer signed version exists.
+
+Updates should:
+
+- keep `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` on the same SemVer version
+- use GitHub Releases as the distribution and updater metadata host
+- commit only the updater public key
+- keep the private updater signing key in GitHub Actions secrets
+- require an explicit user click before installing
+
+Updates should not:
+
+- install silently
+- depend on a hosted Waymark backend
+- store updater state in the Waymark workspace file contract
+- use GitHub API integrations for product data during MVP
 
 ## Security And Privacy
 

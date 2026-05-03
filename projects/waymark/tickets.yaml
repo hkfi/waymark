@@ -77,6 +77,27 @@ tickets:
       - codex-subscription-connector
     linked_threads: []
     generated_prompts: []
+  - id: signed-github-release-updater
+    title: Signed GitHub Release updater
+    status: done
+    priority: high
+    summary: Publish signed Tauri releases from intentional version bumps and show an in-app update indicator when a newer GitHub Release is available.
+    acceptance_criteria:
+      - Release policy documents that main is releasable but only version bumps publish app updates.
+      - Agents know to update package.json, src-tauri/Cargo.toml, and src-tauri/tauri.conf.json together when shipping an update.
+      - Tauri updater artifacts and GitHub latest.json are configured for GitHub Releases.
+      - The app checks for signed updates and shows a toolbar update indicator only when a newer release exists.
+      - Installing an update requires an explicit user click.
+    linked_files:
+      - docs/release-policy.md
+      - .github/workflows/release.yml
+      - src/app/hooks/useAppUpdates.ts
+      - src/components/shell.tsx
+      - src-tauri/tauri.conf.json
+    linked_decisions:
+      - github-release-updater
+    linked_threads: []
+    generated_prompts: []
   - id: mvp-scope-governance
     title: MVP scope governance
     status: done

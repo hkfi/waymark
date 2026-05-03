@@ -10,6 +10,7 @@ This folder is the durable project context for humans and AI agents.
 - [`mvp-boundaries.md`](mvp-boundaries.md): what should not be built during MVP unless explicitly promoted.
 - [`mvp-exit-criteria.md`](mvp-exit-criteria.md): how to tell when Waymark is no longer in MVP.
 - [`roadmap.md`](roadmap.md): strategic roadmap from MVP through later product bets.
+- [`release-policy.md`](release-policy.md): version bump policy, GitHub Releases, and Tauri updater rules.
 
 ## Project Memory
 

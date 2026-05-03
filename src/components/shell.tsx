@@ -1,6 +1,6 @@
-import { Bot, FileText, FolderOpen, GitBranch, Inbox, LayoutGrid, Lightbulb, ListChecks, ListOrdered, MessageSquareText, Plus, RefreshCw, Search, Sliders, Sparkles, Triangle, type LucideIcon } from "lucide-react";
+import { Bot, Download, FileText, FolderOpen, GitBranch, Inbox, LayoutGrid, Lightbulb, ListChecks, ListOrdered, MessageSquareText, Plus, RefreshCw, Search, Sliders, Sparkles, Triangle, type LucideIcon } from "lucide-react";
 import { useMemo, type ButtonHTMLAttributes, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
-import type { Ticket, WaymarkProject, WorkspaceData } from "../types";
+import type { AppUpdateStatus, Ticket, WaymarkProject, WorkspaceData } from "../types";
 import { projectColor, projectMark, projectStatusKind, type MainTab, type NavId } from "../app/model";
 import { Btn, cx } from "./primitives";
 
@@ -9,6 +9,10 @@ export function WorkspaceToolbar({
   project,
   rootPath,
   style,
+  updateStatus,
+  updateVersion,
+  updateProgress,
+  onInstallUpdate,
   onRefresh,
   onOpenFolder,
   onOpenConfig,
@@ -17,10 +21,25 @@ export function WorkspaceToolbar({
   project: WaymarkProject | null;
   rootPath: string;
   style: CSSProperties;
+  updateStatus: AppUpdateStatus;
+  updateVersion: string | null;
+  updateProgress: number | null;
+  onInstallUpdate: () => void;
   onRefresh: () => void;
   onOpenFolder: () => void;
   onOpenConfig: () => void;
 }) {
+  const updateLabel = updateStatus === "installing"
+    ? updateProgress === null
+      ? "Updating"
+      : `Updating ${Math.round(updateProgress * 100)}%`
+    : updateStatus === "restarting"
+      ? "Restarting"
+      : updateVersion
+        ? `Update ${updateVersion}`
+        : "Update";
+  const showUpdate = updateStatus === "available" || updateStatus === "installing" || updateStatus === "restarting";
+
   return (
     <div
       className="app-toolbar grid items-center border-b border-line bg-surface-rail select-none min-w-0 overflow-hidden"
@@ -47,6 +66,21 @@ export function WorkspaceToolbar({
         <span className="h-[22px] px-2 rounded-[3px] text-[11px] text-ink-faint border border-line-soft bg-surface-2 inline-flex items-center gap-1.5">
           <GitBranch size={12} /> main
         </span>
+        {showUpdate ? (
+          <ToolbarButton
+            onClick={onInstallUpdate}
+            disabled={updateStatus !== "available"}
+            title={updateVersion ? `Install Waymark ${updateVersion}` : "Install app update"}
+            className="border-[oklch(0.74_0.13_150_/_0.35)] bg-[oklch(0.74_0.13_150_/_0.12)] text-lane-done hover:bg-[oklch(0.74_0.13_150_/_0.18)]"
+          >
+            {updateStatus === "available" ? (
+              <Download size={12} />
+            ) : (
+              <RefreshCw size={12} className="animate-spin" />
+            )}
+            {updateLabel}
+          </ToolbarButton>
+        ) : null}
         <ToolbarButton onClick={onRefresh} title="Reload workspace">
           <RefreshCw size={12} /> Reload
         </ToolbarButton>
@@ -62,10 +96,15 @@ export function WorkspaceToolbar({
 }
 
 function ToolbarButton({ children, ...rest }: ButtonHTMLAttributes<HTMLButtonElement>) {
+  const { className, ...buttonProps } = rest;
+
   return (
     <button
-      {...rest}
-      className="h-[22px] px-2 rounded-[3px] text-[11px] text-ink-soft border border-transparent hover:border-line-soft hover:bg-surface-3 hover:text-ink inline-flex items-center gap-1.5"
+      {...buttonProps}
+      className={cx(
+        "h-[22px] px-2 rounded-[3px] text-[11px] text-ink-soft border border-transparent hover:border-line-soft hover:bg-surface-3 hover:text-ink inline-flex items-center gap-1.5 disabled:opacity-70 disabled:cursor-default",
+        className,
+      )}
     >
       {children}
     </button>

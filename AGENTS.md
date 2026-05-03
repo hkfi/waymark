@@ -9,7 +9,8 @@ This is the repo entrypoint for AI agents working on Waymark. Keep changes local
 3. [`docs/development-standards.md`](docs/development-standards.md) for coding, UI, testing, and documentation expectations.
 4. [`docs/ai-workflows.md`](docs/ai-workflows.md) before changing agent handoff, prompt generation, or context files.
 5. [`docs/mvp-boundaries.md`](docs/mvp-boundaries.md), [`docs/mvp-exit-criteria.md`](docs/mvp-exit-criteria.md), and [`docs/roadmap.md`](docs/roadmap.md) before adding new product surface area.
-6. [`projects/waymark/project.yaml`](projects/waymark/project.yaml) and [`projects/waymark/tickets.yaml`](projects/waymark/tickets.yaml) for the current Waymark project memory.
+6. [`docs/release-policy.md`](docs/release-policy.md) before changing app versions, GitHub Releases, signing, or updater behavior.
+7. [`projects/waymark/project.yaml`](projects/waymark/project.yaml) and [`projects/waymark/tickets.yaml`](projects/waymark/tickets.yaml) for the current Waymark project memory.
 
 ## Product Invariants
 
@@ -35,6 +36,7 @@ This is the repo entrypoint for AI agents working on Waymark. Keep changes local
 - If behavior, file contracts, agent workflow, or architecture changes, update the matching doc in the same change.
 - If the Waymark workspace schema changes, update `ARCHITECTURE.md`, `docs/ai-workflows.md`, and the self-project files under `projects/waymark/`.
 - If a new durable convention is introduced, add it to `docs/development-standards.md` or `.agent/rules/`.
+- If an app update should ship, run `pnpm version:set -- <semver>` per `docs/release-policy.md`.
 
 ## Validation
 

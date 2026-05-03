@@ -61,3 +61,11 @@ pnpm tauri build --debug
 ```
 
 For UI changes, also run the app and inspect the changed workflow visually.
+
+## Release Standards
+
+Waymark publishes desktop updates only from intentional version bumps. Do not bump the app version for every merge to `main`.
+
+When a change should ship as an app update, run `pnpm version:set -- <semver>` so `package.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json` stay on the same SemVer version. The GitHub release workflow uses the `src-tauri/tauri.conf.json` version change as the release trigger.
+
+See `docs/release-policy.md` before changing release automation, updater behavior, signing keys, or app versions.

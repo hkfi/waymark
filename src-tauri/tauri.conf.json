@@ -29,6 +29,15 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": []
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDcxNEY4QTA4NkIzNzQwNTUKUldSVlFEZHJDSXBQY1NaY2JIR0x4R3NBZU1YMGFxLy9HeW4wWjhQazYyVGRhanRSMXhaVnRqeVIK",
+      "endpoints": [
+        "https://github.com/hkfi/waymark/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

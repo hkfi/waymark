@@ -22,6 +22,7 @@ import {
   useSelection,
   useWorkspace,
 } from "./AppProvider";
+import { useAppUpdates } from "./hooks/useAppUpdates";
 
 export function AppShell() {
   const layout = useLayout();
@@ -62,6 +63,7 @@ function ToolbarRegion() {
   const feedback = useFeedback();
   const layout = useLayout();
   const workspace = useWorkspace();
+  const updates = useAppUpdates(feedback);
 
   return (
     <WorkspaceToolbar
@@ -69,6 +71,10 @@ function ToolbarRegion() {
       project={workspace.selectedProject}
       rootPath={workspace.rootPath}
       style={layout.shellStyle}
+      updateStatus={updates.status}
+      updateVersion={updates.version}
+      updateProgress={updates.progress}
+      onInstallUpdate={updates.installUpdate}
       onRefresh={() => workspace.refresh()}
       onOpenFolder={() => {
         if (!isTauri()) {

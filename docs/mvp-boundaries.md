@@ -38,21 +38,28 @@ Do not add these unless explicitly promoted:
 
 The Codex-backed assistant is explicitly promoted out of the MVP boundary because it supports the core project-memory loop while preserving the local-first model.
 
-This promotion allows:
+The GitHub Release updater is explicitly promoted out of the MVP boundary because desktop users need a safe way to receive signed app updates without a hosted Waymark backend.
+
+These promotions allow:
 
 - detecting and launching the user's local Codex install
 - asking Codex for brainstorming or structured Waymark drafts through the user's Codex auth
 - streaming assistant turns through a local ephemeral Codex app-server thread
 - review-gated saves of accepted tickets, ideas, decisions, thread references, and summaries
 - a CLI fallback route when the experimental app-server route is unavailable
+- publishing signed desktop builds through GitHub Releases when the app version changes
+- checking GitHub Release updater metadata and showing an update indicator when a newer signed version exists
+- installing the update only after the user explicitly clicks the update indicator
 
-This promotion does not allow:
+These promotions do not allow:
 
 - Waymark-owned OpenAI API keys or token storage
 - scraping Codex, ChatGPT, Claude, Cursor, or private tool state
 - direct Codex edits to project memory files
 - storing full assistant transcripts by default
 - making AI availability required for normal manual capture or handoff workflows
+- silent app update installation
+- GitHub API-backed product features beyond release publication and static updater metadata
 
 ## Allowed In MVP
 

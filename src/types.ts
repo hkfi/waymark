@@ -89,6 +89,17 @@ export interface WorkspaceData {
   warnings: string[];
 }
 
+export type AppUpdateStatus = "unsupported" | "idle" | "checking" | "available" | "installing" | "restarting" | "error";
+
+export interface AppUpdateState {
+  status: AppUpdateStatus;
+  currentVersion: string | null;
+  version: string | null;
+  notes: string | null;
+  progress: number | null;
+  error: string | null;
+}
+
 export type CodexConnectionState = "unavailable" | "needsLogin" | "ready" | "running" | "errored";
 export type CodexRoute = "app-server" | "app-server-fallback" | "cli" | "unavailable";
 
