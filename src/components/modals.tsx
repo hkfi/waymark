@@ -339,10 +339,83 @@ function FieldLabel({ children }: { children: ReactNode }) {
   return <label className="text-[10px] uppercase tracking-[0.10em] text-ink-mute font-semibold">{children}</label>;
 }
 
+type CapturePickItem = {
+  id: string;
+  label: string;
+  detail?: string;
+};
+
 const inputClass =
   "w-full bg-surface-input-2 border border-line-soft text-ink rounded-[3px] px-2 py-1.5 text-[12.5px] outline-0 focus:border-accent-deep";
 const textareaClass =
   "w-full bg-surface-input-2 border border-line-soft text-ink rounded-[3px] px-2 py-1.5 outline-0 focus:border-accent-deep min-h-[74px] resize-y leading-[1.45] font-mono text-[11.5px]";
+
+function isLineSelected(value: string, id: string) {
+  return lines(value).includes(id);
+}
+
+function toggleLine(value: string, id: string, onChange: (next: string) => void) {
+  const next = lines(value);
+  const index = next.indexOf(id);
+  if (index >= 0) next.splice(index, 1);
+  else next.push(id);
+  onChange(next.join("\n"));
+}
+
+function CapturePickList({
+  label,
+  empty,
+  items,
+  value,
+  onChange,
+}: {
+  label: string;
+  empty: string;
+  items: CapturePickItem[];
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  return (
+    <div className="min-w-0">
+      <FieldLabel>{label}</FieldLabel>
+      <div className="mt-1 max-h-[132px] overflow-y-auto rounded-[3px] border border-line-soft bg-surface-input-2 p-1">
+        {items.length ? (
+          <div className="flex flex-col gap-1">
+            {items.map((item) => {
+              const selected = isLineSelected(value, item.id);
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => toggleLine(value, item.id, onChange)}
+                  className={cx(
+                    "grid grid-cols-[14px_1fr] gap-1.5 rounded-[3px] px-1.5 py-1 text-left text-[11.5px]",
+                    selected ? "bg-accent text-accent-ink" : "text-ink-soft hover:bg-surface-3 hover:text-ink",
+                  )}
+                >
+                  <span
+                    className={cx(
+                      "mt-[1px] grid h-3.5 w-3.5 place-items-center rounded-[2px] border",
+                      selected ? "border-accent-ink/40 bg-accent-ink/15" : "border-line bg-surface-1",
+                    )}
+                  >
+                    {selected ? <Check size={10} /> : null}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{item.label}</span>
+                    {item.detail ? <span className="block truncate text-[10.5px] opacity-75">{item.detail}</span> : null}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="m-0 px-1.5 py-1 text-[11.5px] leading-[1.45] text-ink-mute">{empty}</p>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function TicketEditModal({
   ticket,
@@ -568,7 +641,33 @@ export function CaptureModal({
   const [threadStatus, setThreadStatus] = useState<ThreadRecord["status"]>("active");
   const [url, setUrl] = useState("");
   const [summaryFile, setSummaryFile] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [busy, setBusy] = useState(false);
+  const fileChoices = Array.from(
+    new Set([
+      ...project.tickets.flatMap((ticket) => ticket.linked_files ?? []),
+      ...project.decisions.map((decision) => decision.path),
+      ...project.ideas.map((idea) => idea.path),
+      ...(project.config.repos?.map((repo) => repo.path).filter((path): path is string => Boolean(path)) ?? []),
+    ]),
+  )
+    .filter(Boolean)
+    .map((path) => ({ id: path, label: path }));
+  const decisionChoices = project.decisions.map((decision) => ({
+    id: decision.id,
+    label: decision.title,
+    detail: decision.id,
+  }));
+  const threadChoices = project.threads.map((thread) => ({
+    id: thread.id,
+    label: thread.title,
+    detail: `${thread.provider} · ${thread.status}`,
+  }));
+  const ticketChoices = project.tickets.map((ticket) => ({
+    id: ticket.id,
+    label: ticket.title,
+    detail: `${ticket.id} · ${ticket.status}`,
+  }));
 
   return (
     <ModalFrame title={`Capture into ${project.config.name}`} onClose={onClose}>
@@ -664,10 +763,56 @@ export function CaptureModal({
           <>
             <FieldLabel>Acceptance criteria, one per line</FieldLabel>
             <textarea value={acceptanceCriteria} onChange={(event) => setAcceptanceCriteria(event.target.value)} className={textareaClass} />
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <textarea placeholder="Linked files" value={linkedFiles} onChange={(event) => setLinkedFiles(event.target.value)} className={textareaClass} />
-              <textarea placeholder="Decision IDs" value={linkedDecisions} onChange={(event) => setLinkedDecisions(event.target.value)} className={textareaClass} />
-              <textarea placeholder="Thread IDs" value={linkedThreads} onChange={(event) => setLinkedThreads(event.target.value)} className={textareaClass} />
+            <div>
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <FieldLabel>Context</FieldLabel>
+                <button
+                  type="button"
+                  onClick={() => setShowAdvanced((value) => !value)}
+                  className="text-[11px] text-ink-mute hover:text-ink"
+                >
+                  {showAdvanced ? "Hide advanced fields" : "Advanced fields"}
+                </button>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <CapturePickList
+                  label="Files"
+                  empty="No existing file references yet."
+                  items={fileChoices}
+                  value={linkedFiles}
+                  onChange={setLinkedFiles}
+                />
+                <CapturePickList
+                  label="Decisions"
+                  empty="No decisions yet."
+                  items={decisionChoices}
+                  value={linkedDecisions}
+                  onChange={setLinkedDecisions}
+                />
+                <CapturePickList
+                  label="Threads"
+                  empty="No thread references yet."
+                  items={threadChoices}
+                  value={linkedThreads}
+                  onChange={setLinkedThreads}
+                />
+              </div>
+              {showAdvanced ? (
+                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <div>
+                    <FieldLabel>Raw file paths</FieldLabel>
+                    <textarea value={linkedFiles} onChange={(event) => setLinkedFiles(event.target.value)} className={textareaClass} />
+                  </div>
+                  <div>
+                    <FieldLabel>Raw decision IDs</FieldLabel>
+                    <textarea value={linkedDecisions} onChange={(event) => setLinkedDecisions(event.target.value)} className={textareaClass} />
+                  </div>
+                  <div>
+                    <FieldLabel>Raw thread IDs</FieldLabel>
+                    <textarea value={linkedThreads} onChange={(event) => setLinkedThreads(event.target.value)} className={textareaClass} />
+                  </div>
+                </div>
+              ) : null}
             </div>
           </>
         ) : kind === "thread" ? (
@@ -689,10 +834,44 @@ export function CaptureModal({
             </div>
             <input placeholder="Thread URL (optional)" value={url} onChange={(event) => setUrl(event.target.value)} className={inputClass} />
             <input placeholder="Summary file path (optional)" value={summaryFile} onChange={(event) => setSummaryFile(event.target.value)} className={inputClass} />
-            <textarea placeholder="Linked ticket IDs, one per line" value={linkedTickets} onChange={(event) => setLinkedTickets(event.target.value)} className={textareaClass} />
+            <CapturePickList
+              label="Linked tickets"
+              empty="No tickets yet."
+              items={ticketChoices}
+              value={linkedTickets}
+              onChange={setLinkedTickets}
+            />
+            <button
+              type="button"
+              onClick={() => setShowAdvanced((value) => !value)}
+              className="self-start text-[11px] text-ink-mute hover:text-ink"
+            >
+              {showAdvanced ? "Hide raw ticket IDs" : "Advanced raw ticket IDs"}
+            </button>
+            {showAdvanced ? (
+              <textarea placeholder="Linked ticket IDs, one per line" value={linkedTickets} onChange={(event) => setLinkedTickets(event.target.value)} className={textareaClass} />
+            ) : null}
           </>
         ) : (
-          <textarea placeholder="Linked ticket IDs, one per line" value={linkedTickets} onChange={(event) => setLinkedTickets(event.target.value)} className={textareaClass} />
+          <>
+            <CapturePickList
+              label="Linked tickets"
+              empty="No tickets yet."
+              items={ticketChoices}
+              value={linkedTickets}
+              onChange={setLinkedTickets}
+            />
+            <button
+              type="button"
+              onClick={() => setShowAdvanced((value) => !value)}
+              className="self-start text-[11px] text-ink-mute hover:text-ink"
+            >
+              {showAdvanced ? "Hide raw ticket IDs" : "Advanced raw ticket IDs"}
+            </button>
+            {showAdvanced ? (
+              <textarea placeholder="Linked ticket IDs, one per line" value={linkedTickets} onChange={(event) => setLinkedTickets(event.target.value)} className={textareaClass} />
+            ) : null}
+          </>
         )}
         <div className="flex gap-2 justify-end">
           <Btn type="button" variant="ghost" onClick={onClose}>Cancel</Btn>

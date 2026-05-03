@@ -11,6 +11,7 @@ Waymark workspace folder
   -> In-memory project model
   -> Cockpit UI
   -> Explicit user writes back to Markdown/YAML
+  -> Optional user-confirmed Codex assistant drafts
 ```
 
 ## Source Of Truth
@@ -51,10 +52,12 @@ Do not add SQLite as canonical storage.
 - `src/components/views.tsx`: main cockpit content views for overview, queue, decisions, threads, files, inbox, and activity.
 - `src/components/inspector.tsx`: right-side ticket, handoff, thread, and note inspector panels.
 - `src/components/modals.tsx`: explicit user-write workflows for workspace/project creation, capture, ticket editing, and file/link attachment.
+- `src/components/assistant.tsx`: optional Codex-backed project-memory assistant with confirmation, draft review, and explicit accepted writes.
+- `src/assistant.ts`: structured draft schema, Codex prompt construction, and client-side draft validation.
 - `src/workspace.ts`: file contract, YAML/Markdown parsing, validation, sample workspace creation, controlled writes, and prompt generation.
 - `src/types.ts`: shared TypeScript model for workspace/project objects.
 - `src/tauri.ts`: typed frontend bridge to native commands.
-- `src-tauri/src/lib.rs`: small native command surface for file reads/writes, directory listing, path existence, path opening, and `~/` expansion.
+- `src-tauri/src/lib.rs`: small native command surface for file reads/writes, directory listing, path existence, path opening, `~/` expansion, and user-initiated Codex process calls.
 
 ## File Contract
 
@@ -91,7 +94,7 @@ Avoid background rewrites. If a future feature wants to clean up or migrate file
 
 ## Agent Handoff Model
 
-Waymark does not call AI APIs in the MVP. It assembles context locally, saves a Markdown prompt, copies it to the clipboard, and links the prompt back to the ticket.
+Waymark's baseline workflow does not require AI APIs. It assembles context locally, saves a Markdown prompt, copies it to the clipboard, and links the prompt back to the ticket.
 
 Prompt generation should:
 
@@ -101,10 +104,29 @@ Prompt generation should:
 - avoid dumping entire repos into prompts
 - keep instructions scoped and implementation-oriented
 
+## Codex Assistant Model
+
+The Codex-backed Assistant is an explicitly promoted optional surface. It detects the user's local Codex install, relies on Codex's own local auth, starts an ephemeral read-only app-server thread, and sends project context only after the user confirms the session notice.
+
+The assistant should:
+
+- request structured drafts for tickets, ideas, decisions, and thread references
+- stream app-server assistant deltas into the UI and fall back to CLI execution on app-server failure
+- validate proposed IDs in React before writing
+- save only user-accepted records and concise summaries
+- keep Waymark as the only writer to project memory files
+
+The assistant should not:
+
+- read or store Codex credentials
+- scrape private Codex, ChatGPT, Claude, or Cursor storage
+- let Codex directly mutate the workspace for this feature
+- make AI connectivity required for manual project workflows
+
 ## Security And Privacy
 
 - No telemetry by default.
-- No AI API calls by default.
+- No Waymark-owned AI API calls by default.
 - No secret storage in project files.
 - Native commands should remain simple and auditable.
 - External links are user-provided and opened externally.

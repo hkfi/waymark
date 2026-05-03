@@ -480,6 +480,13 @@ export async function saveThreads(project: WaymarkProject, threads: ThreadRecord
   await writeTextFile(joinPath(project.rootPath, "threads.yaml"), dumpYaml({ version: 1, threads }));
 }
 
+export async function saveThreadSummary(project: WaymarkProject, title: string, body: string) {
+  const id = slugify(title) || `codex-${Date.now()}`;
+  const path = `ai/thread-summaries/${today()}-${id}.md`;
+  await writeTextFile(joinPath(project.rootPath, path), `# ${title}\n\n${body.trim()}\n`);
+  return path;
+}
+
 export async function saveLinks(project: WaymarkProject, links: LinkRecord[]) {
   await writeTextFile(joinPath(project.rootPath, "links.yaml"), dumpYaml({ version: 1, links }));
 }

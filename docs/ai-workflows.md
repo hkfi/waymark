@@ -36,6 +36,35 @@ The intended loop:
 6. Paste the prompt into Codex/Claude.
 7. Save the resulting thread reference and summary back into Waymark.
 
+## Codex-Backed Assistant Loop
+
+The Assistant panel is an explicitly promoted AI surface for project-memory brainstorming. It uses the user's local Codex installation and Codex auth; Waymark does not read or store Codex credentials.
+
+The intended loop:
+
+1. User opens a project and selects Assistant.
+2. Waymark shows Codex availability and asks for confirmation before sending selected project context and the user's prompt.
+3. User brainstorms, asks Codex to structure the prompt, or pastes external Codex output for local parsing.
+4. Codex returns streamed assistant text through a local app-server thread, or Waymark falls back to one-shot CLI execution.
+5. Waymark validates draft IDs against the current project and turns invalid references into warnings.
+6. User reviews, edits, and selects proposed tickets, ideas, decisions, thread references, and summaries.
+7. Waymark writes only the accepted records to Markdown/YAML through its existing controlled write helpers.
+
+Assistant outputs should:
+
+- propose project-memory records, not directly edit files
+- use an ephemeral read-only Codex thread with approval policy set to never
+- keep tickets, ideas, decisions, and threads small enough to review
+- save thread summaries under `ai/thread-summaries/` only when the user accepts them
+- prefer concise summaries over full transcript persistence
+
+Assistant outputs should not:
+
+- ask Codex to use autonomous coding tools for this feature
+- assume Waymark can access private Codex or ChatGPT history
+- include secrets or account identifiers
+- silently create or modify project memory
+
 ## Prompt Standards
 
 Generated handoffs should include:
@@ -65,10 +94,11 @@ Good next steps:
 - stale context warnings
 - read-only MCP server for project state
 - GitNexus-aware pre-handoff context suggestions
+- app-server cancellation and recovery hardening as Codex's local protocol evolves
 
 Defer:
 
 - direct Codex/Claude scraping
 - mandatory hosted sync
-- automatic AI API calls
+- Waymark-owned AI API keys
 - background file rewrites

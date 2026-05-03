@@ -52,6 +52,31 @@ tickets:
     linked_decisions: []
     linked_threads: []
     generated_prompts: []
+  - id: codex-backed-assistant
+    title: Codex-backed Waymark Assistant
+    status: now
+    priority: high
+    summary: Add an optional assistant that uses the user's local Codex auth for brainstorming and review-gated project-memory drafts.
+    acceptance_criteria:
+      - Waymark can detect a local Codex binary without reading or storing Codex tokens.
+      - The Assistant panel shows connection state, route, project context notice, and disabled copy in browser/demo mode.
+      - App-server mode starts an ephemeral read-only Codex thread and streams assistant deltas into the conversation.
+      - CLI execution remains available as a fallback when app-server start or turn execution fails.
+      - Brainstorm, structure, and pasted-output capture flow into the same draft review model.
+      - Draft tickets, ideas, decisions, and thread references are editable and selected before any Markdown/YAML write.
+      - Invalid linked ticket, decision, and thread IDs are shown as warnings instead of being silently written.
+      - Manual capture remains usable without Codex and hides raw ID fields behind Advanced controls.
+      - Documentation records the promoted MVP scope and the Codex subscription-auth decision.
+    linked_files:
+      - src/components/assistant.tsx
+      - src/assistant.ts
+      - src-tauri/src/lib.rs
+      - docs/ai-workflows.md
+      - docs/mvp-boundaries.md
+    linked_decisions:
+      - codex-subscription-connector
+    linked_threads: []
+    generated_prompts: []
   - id: mvp-scope-governance
     title: MVP scope governance
     status: done

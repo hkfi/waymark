@@ -88,3 +88,64 @@ export interface WorkspaceData {
   projects: WaymarkProject[];
   warnings: string[];
 }
+
+export type CodexConnectionState = "unavailable" | "needsLogin" | "ready" | "running" | "errored";
+export type CodexRoute = "app-server" | "app-server-fallback" | "cli" | "unavailable";
+
+export interface CodexStatus {
+  state: CodexConnectionState;
+  path: string | null;
+  detail: string;
+}
+
+export interface WaymarkAssistantMessage {
+  id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  route: CodexRoute;
+  status: "sending" | "complete" | "error";
+  timestamp: string;
+}
+
+export interface DraftTicket {
+  title: string;
+  status: TicketStatus;
+  priority?: Priority;
+  summary?: string;
+  acceptance_criteria?: string[];
+  linked_files?: string[];
+  linked_decisions?: string[];
+  linked_threads?: string[];
+}
+
+export interface DraftNote {
+  title: string;
+  body: string;
+  linked_tickets?: string[];
+}
+
+export interface DraftThread {
+  title: string;
+  status: ThreadRecord["status"];
+  url?: string | null;
+  summary?: string;
+  linked_tickets?: string[];
+}
+
+export interface WaymarkDraftSet {
+  summary: string;
+  source: "codex" | "pasted";
+  tickets: DraftTicket[];
+  ideas: DraftNote[];
+  decisions: DraftNote[];
+  threads: DraftThread[];
+  warnings: string[];
+}
+
+export interface CodexRunRequest {
+  projectSlug: string;
+  taskMode: "brainstorm" | "structure" | "capture";
+  userPrompt: string;
+  selectedContextIds: string[];
+  routePreference: "app-server" | "cli" | "auto";
+}

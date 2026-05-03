@@ -7,7 +7,7 @@ import type {
   WorkspaceData,
 } from "../types";
 
-export type NavId = "home" | "queue" | "decisions" | "threads" | "ideas" | "files" | "inbox";
+export type NavId = "home" | "assistant" | "queue" | "decisions" | "threads" | "ideas" | "files" | "inbox";
 export type MainTab = "overview" | "tickets" | "decisions" | "threads" | "files";
 export type InspectorMode = "ticket" | "prompt" | "thread" | "note";
 export type Lane = "now" | "next" | "later" | "blocked" | "done";

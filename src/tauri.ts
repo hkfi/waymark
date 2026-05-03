@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { CodexStatus } from "./types";
 
 declare global {
   interface Window {
@@ -40,4 +41,47 @@ export async function openPath(path: string) {
 
 export async function chooseDirectory() {
   return invoke<string | null>("choose_directory");
+}
+
+export interface NativeCodexRunRequest {
+  cwd: string;
+  prompt: string;
+  schema?: string | null;
+  timeoutMs?: number | null;
+}
+
+export interface NativeCodexRunResult {
+  route: string;
+  output: string;
+  stderr: string;
+}
+
+export interface NativeCodexAppSession {
+  id: string;
+  route: string;
+  detail: string;
+}
+
+export async function codexStatus() {
+  return invoke<CodexStatus>("codex_status");
+}
+
+export async function codexLogin() {
+  return invoke<void>("codex_login");
+}
+
+export async function codexRunStructured(request: NativeCodexRunRequest) {
+  return invoke<NativeCodexRunResult>("codex_run_structured", { request });
+}
+
+export async function codexAppSessionStart(cwd: string) {
+  return invoke<NativeCodexAppSession>("codex_app_session_start", { cwd });
+}
+
+export async function codexAppTurnSend(sessionId: string, request: NativeCodexRunRequest) {
+  return invoke<NativeCodexRunResult>("codex_app_turn_send", { sessionId, request });
+}
+
+export async function codexAppSessionStop(sessionId: string) {
+  return invoke<void>("codex_app_session_stop", { sessionId });
 }

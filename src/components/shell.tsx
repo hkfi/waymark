@@ -1,4 +1,4 @@
-import { FileText, FolderOpen, GitBranch, Inbox, LayoutGrid, Lightbulb, ListChecks, ListOrdered, MessageSquareText, Plus, RefreshCw, Search, Sliders, Sparkles, Triangle, type LucideIcon } from "lucide-react";
+import { Bot, FileText, FolderOpen, GitBranch, Inbox, LayoutGrid, Lightbulb, ListChecks, ListOrdered, MessageSquareText, Plus, RefreshCw, Search, Sliders, Sparkles, Triangle, type LucideIcon } from "lucide-react";
 import { useMemo, type ButtonHTMLAttributes, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import type { Ticket, WaymarkProject, WorkspaceData } from "../types";
 import { projectColor, projectMark, projectStatusKind, type MainTab, type NavId } from "../app/model";
@@ -137,8 +137,9 @@ export function Sidebar({
   onRequestProject: () => void;
 }) {
   const counts = useMemo(() => aggregateNavCounts(workspace), [workspace]);
-  const navItems: { id: NavId; label: string; icon: LucideIcon; count: number }[] = [
+  const navItems: { id: NavId; label: string; icon: LucideIcon; count?: number }[] = [
     { id: "home", label: "Overview", icon: LayoutGrid, count: workspace?.projects.length ?? 0 },
+    { id: "assistant", label: "Assistant", icon: Bot },
     { id: "queue", label: "Queue", icon: ListChecks, count: counts.active },
     { id: "decisions", label: "Decisions", icon: ListOrdered, count: counts.decisions },
     { id: "threads", label: "Threads", icon: MessageSquareText, count: counts.threads },
@@ -303,7 +304,7 @@ function NavItem({
   onClick,
 }: {
   label: string;
-  count: number;
+  count?: number;
   icon: LucideIcon;
   active: boolean;
   onClick: () => void;
@@ -322,14 +323,16 @@ function NavItem({
         <Icon size={13} />
       </span>
       <span>{label}</span>
-      <span
-        className={cx(
-          "ml-auto font-mono text-[10.5px] px-1.5 rounded-[3px] leading-[15px]",
-          active ? "bg-[oklch(0.78_0.135_75_/_0.18)] text-accent" : "bg-surface-3 text-ink-mute",
-        )}
-      >
-        {count}
-      </span>
+      {typeof count === "number" && count > 0 ? (
+        <span
+          className={cx(
+            "ml-auto font-mono text-[10.5px] px-1.5 rounded-[3px] leading-[15px]",
+            active ? "bg-[oklch(0.78_0.135_75_/_0.18)] text-accent" : "bg-surface-3 text-ink-mute",
+          )}
+        >
+          {count}
+        </span>
+      ) : null}
     </button>
   );
 }

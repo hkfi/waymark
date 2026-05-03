@@ -171,6 +171,95 @@
   .status-chip.blocked { background: oklch(0.70 0.16 25 / 0.16); color: oklch(0.86 0.10 25); }
   .status-chip.done    { background: oklch(0.74 0.13 150 / 0.14); color: oklch(0.86 0.07 150); }
   .status-chip.idea    { background: oklch(0.74 0.12 295 / 0.14); color: oklch(0.86 0.07 295); }
+
+  .assistant-input {
+    @apply w-full bg-surface-input-2 border border-line-soft text-ink rounded-[5px] px-3 py-2 outline-0 focus:border-accent-deep resize-y leading-[1.5] text-[13px];
+  }
+
+  .assistant-field {
+    @apply w-full bg-surface-input-2 border border-line-soft text-ink rounded-[3px] px-2 py-1.5 outline-0 focus:border-accent-deep text-[12px] leading-[1.45];
+  }
+
+  .assistant-layout {
+    container-type: inline-size;
+  }
+
+  .assistant-workspace-grid {
+    @apply grid grid-cols-1 gap-3.5 items-start min-w-0;
+  }
+
+  .assistant-mode-switch {
+    @apply inline-flex items-center gap-1 rounded-[5px] border border-line-soft bg-surface-input-2 p-0.5;
+  }
+
+  .assistant-mode-switch button {
+    @apply border-transparent bg-transparent;
+  }
+
+  .assistant-chat-card {
+    background: linear-gradient(180deg, var(--color-surface-2), var(--color-surface));
+  }
+
+  .assistant-chat-scroll {
+    @apply max-h-[560px] overflow-y-auto px-4 py-4 grid gap-3;
+    scrollbar-width: thin;
+  }
+
+  .assistant-message-row {
+    @apply flex gap-2.5 items-start;
+  }
+
+  .assistant-message-row.user {
+    @apply justify-end;
+  }
+
+  .assistant-message-row.system {
+    @apply justify-start;
+  }
+
+  .assistant-avatar {
+    @apply mt-1 grid h-6 w-6 shrink-0 place-items-center rounded-[5px] border;
+  }
+
+  .assistant-avatar.assistant {
+    @apply border-accent-soft bg-accent-soft text-accent;
+  }
+
+  .assistant-avatar.system {
+    @apply border-line-soft bg-surface-3 text-warn;
+  }
+
+  .assistant-bubble {
+    @apply max-w-[min(720px,82%)] rounded-[8px] border px-3 py-2.5 shadow-[0_8px_24px_oklch(0_0_0_/_0.12)];
+  }
+
+  .assistant-bubble.assistant {
+    @apply border-line-soft bg-surface-2;
+  }
+
+  .assistant-bubble.user {
+    @apply border-accent-soft bg-accent-soft text-ink;
+  }
+
+  .assistant-bubble.system {
+    @apply border-line-soft bg-surface-3;
+  }
+
+  .assistant-stream-caret {
+    @apply ml-1 inline-block h-[1em] w-[2px] translate-y-[2px] bg-accent align-baseline;
+    animation: assistant-caret 900ms steps(1) infinite;
+  }
+
+  @container (min-width: 900px) {
+    .assistant-workspace-grid {
+      grid-template-columns: minmax(420px, 1fr) minmax(320px, 380px);
+    }
+  }
+}
+
+@keyframes assistant-caret {
+  0%, 45% { opacity: 1; }
+  46%, 100% { opacity: 0; }
 }
 
 @media (max-width: 900px) {

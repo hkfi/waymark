@@ -210,6 +210,7 @@ function MainContentRegion() {
             }
             modals.openLinkModal();
           }}
+          onSaved={() => workspace.refresh()}
         />
       )}
     </div>

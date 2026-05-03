@@ -4,6 +4,7 @@ import { openPath } from "../tauri";
 import type { NoteRecord, ThreadRecord, Ticket, WaymarkProject, WorkspaceData } from "../types";
 import { ticketWarnings } from "../workspace";
 import { LANES_IN_QUEUE, LANE_LABEL, activeLane, buildActivity, matchesSearch, projectFile, resolveProjectPath, ticketHasFlag, type Lane, type MainTab, type NavId } from "../app/model";
+import { AssistantView } from "./assistant";
 import { Btn, Card, Cell, DataRow, EmptyRow, Flag, Pin, SectionHead, cx } from "./primitives";
 
 function Stats({ project }: { project: WaymarkProject }) {
@@ -77,6 +78,7 @@ export function CockpitContent({
   onNav,
   onAddFile,
   onAddLink,
+  onSaved,
 }: {
   nav: NavId;
   tab: MainTab;
@@ -94,8 +96,13 @@ export function CockpitContent({
   onNav: (id: NavId) => void;
   onAddFile: () => void;
   onAddLink: () => void;
+  onSaved: () => Promise<void>;
 }) {
   const view: NavId | MainTab = nav === "home" && tab !== "overview" ? tab : nav;
+
+  if (view === "assistant") {
+    return <AssistantView project={project} onSaved={onSaved} />;
+  }
 
   if (view === "queue" || view === "tickets") {
     return (
@@ -771,4 +778,3 @@ function IdeasAndActivity({
     </div>
   );
 }
-

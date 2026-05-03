@@ -18,10 +18,14 @@ Included:
 - agent-readable repo context and development standards
 - lightweight validation warnings
 
+Explicitly promoted:
+
+- Codex-backed Assistant for project-memory brainstorming and review-gated drafts through the user's local Codex auth
+
 Not included:
 
 - hosted sync
-- AI API calls
+- Waymark-owned AI API keys
 - external service integrations
 - MCP server
 - SQLite cache/index
@@ -37,6 +41,7 @@ Likely work:
 - improve validation messages
 - improve ticket creation/editing
 - improve handoff context picker
+- harden the Codex Assistant review drawer and CLI fallback behavior
 - include project standards in generated handoffs
 - make the self-workspace more complete
 - add focused UI smoke tests or manual QA checklist
@@ -55,6 +60,7 @@ Candidates:
 - stale context and missing context detection
 - GitNexus-aware context suggestions
 - SQLite cache/index for derived data only
+- stronger Codex app-server cancellation, reconnection, and recovery once the local protocol settles
 
 ## V1
 

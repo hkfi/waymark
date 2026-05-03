@@ -34,6 +34,26 @@ Do not add these unless explicitly promoted:
 - full Markdown editor as the primary product surface
 - background migrations that rewrite project memory without preview
 
+## Promoted Scope
+
+The Codex-backed assistant is explicitly promoted out of the MVP boundary because it supports the core project-memory loop while preserving the local-first model.
+
+This promotion allows:
+
+- detecting and launching the user's local Codex install
+- asking Codex for brainstorming or structured Waymark drafts through the user's Codex auth
+- streaming assistant turns through a local ephemeral Codex app-server thread
+- review-gated saves of accepted tickets, ideas, decisions, thread references, and summaries
+- a CLI fallback route when the experimental app-server route is unavailable
+
+This promotion does not allow:
+
+- Waymark-owned OpenAI API keys or token storage
+- scraping Codex, ChatGPT, Claude, Cursor, or private tool state
+- direct Codex edits to project memory files
+- storing full assistant transcripts by default
+- making AI availability required for normal manual capture or handoff workflows
+
 ## Allowed In MVP
 
 These are safe MVP improvements:
