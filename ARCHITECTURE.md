@@ -57,7 +57,9 @@ Do not add SQLite as canonical storage.
 - `src/workspace.ts`: file contract, YAML/Markdown parsing, validation, sample workspace creation, controlled writes, and prompt generation.
 - `src/types.ts`: shared TypeScript model for workspace/project objects.
 - `src/tauri.ts`: typed frontend bridge to native commands.
-- `src-tauri/src/lib.rs`: small native command surface for file reads/writes, directory listing, path existence, path opening, `~/` expansion, and user-initiated Codex process calls.
+- `src-tauri/src/lib.rs`: native entrypoint that registers plugins, managed state, and the command surface.
+- `src-tauri/src/file_commands.rs`: small filesystem command surface for file reads/writes, directory listing, path existence, path opening, `~/` expansion, and native folder picking.
+- `src-tauri/src/codex.rs`: user-initiated Codex status, login, CLI execution, and app-server session calls.
 
 ## File Contract
 

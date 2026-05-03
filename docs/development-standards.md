@@ -31,6 +31,7 @@
 - Keep Rust commands small and boring.
 - Do not put parsing, validation, prompt generation, or product logic in Rust unless there is a concrete reason.
 - Expand `~/` in native file operations.
+- Use the Tauri dialog plugin for user-picked files or folders instead of platform shell scripts.
 - Prefer explicit write commands over background sync.
 - Keep the native command surface auditable.
 
