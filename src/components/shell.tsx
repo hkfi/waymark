@@ -240,7 +240,7 @@ export function Sidebar({
             <Plus size={11} /> New…
           </SidebarChipButton>
           <SidebarChipButton onClick={onSeed}>
-            <Sparkles size={11} /> Seed
+            <Sparkles size={11} /> Sample
           </SidebarChipButton>
         </div>
       </div>

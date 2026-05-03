@@ -271,6 +271,11 @@ export async function loadWorkspace(rootPath: string): Promise<WorkspaceData> {
 }
 
 export async function createSampleWorkspace(rootPath: string) {
+  const configPath = joinPath(rootPath, "waymark.yaml");
+  if (await pathExists(configPath)) {
+    throw new Error(`Workspace already exists at ${configPath}`);
+  }
+
   await createDirAll(joinPath(rootPath, "projects", "glossa", "ai", "prompts"));
   await createDirAll(joinPath(rootPath, "projects", "glossa", "ai", "thread-summaries"));
   await createDirAll(joinPath(rootPath, "projects", "glossa", "ideas"));
@@ -280,7 +285,7 @@ export async function createSampleWorkspace(rootPath: string) {
   await createDirAll(joinPath(rootPath, "projects", "openclaw", "decisions"));
 
   await writeTextFile(
-    joinPath(rootPath, "waymark.yaml"),
+    configPath,
     dumpYaml({ version: 1, name: "Waymark Sample", projects_dir: "projects" }),
   );
 

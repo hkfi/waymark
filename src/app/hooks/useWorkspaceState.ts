@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { chooseDirectory, isTauri } from "../../tauri";
+import { chooseDirectory, isTauri, pathExists } from "../../tauri";
 import type { ProjectConfig, WaymarkProject, WorkspaceData } from "../../types";
 import {
   buildDemoWorkspace,
   createProject as createProjectFiles,
   createSampleWorkspace,
   createWorkspace as createWorkspaceFiles,
+  joinPath,
   loadWorkspace,
 } from "../../workspace";
 import { defaultWorkspacePath, LAST_WORKSPACE_PATH_KEY, SELECTED_PROJECT_PREFIX } from "../model";
@@ -18,6 +19,11 @@ type FeedbackApi = {
 function storedWorkspacePath() {
   if (typeof window === "undefined") return defaultWorkspacePath;
   return window.localStorage.getItem(LAST_WORKSPACE_PATH_KEY) || defaultWorkspacePath;
+}
+
+function hasStoredWorkspacePath() {
+  if (typeof window === "undefined") return false;
+  return Boolean(window.localStorage.getItem(LAST_WORKSPACE_PATH_KEY));
 }
 
 function selectedProjectKey(rootPath: string) {
@@ -98,9 +104,14 @@ export function useWorkspaceState({ setError, setNotice }: FeedbackApi) {
       setError("Run Waymark through Tauri to seed a local workspace.");
       return;
     }
-    await createSampleWorkspace(rootPath);
-    setNotice(`Created sample workspace at ${rootPath}`);
-    await refresh(rootPath);
+    try {
+      await createSampleWorkspace(rootPath);
+      setRootPath(rootPath);
+      setNotice(`Created sample workspace at ${rootPath}.`);
+      await refresh(rootPath);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
   }, [refresh, rootPath, setError, setNotice]);
 
   const createWorkspace = useCallback(
@@ -149,7 +160,20 @@ export function useWorkspaceState({ setError, setNotice }: FeedbackApi) {
 
   useEffect(() => {
     if (isTauri()) {
-      refresh().catch((caught) => setError(String(caught)));
+      if (hasStoredWorkspacePath()) {
+        refresh().catch((caught) => setError(String(caught)));
+        return;
+      }
+
+      pathExists(joinPath(defaultWorkspacePath, "waymark.yaml"))
+        .then((exists) => {
+          if (exists) {
+            return refresh(defaultWorkspacePath);
+          }
+          setNotice("Create a sample workspace or open an existing Waymark folder.");
+          return undefined;
+        })
+        .catch((caught) => setError(String(caught)));
       return;
     }
     if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1") {

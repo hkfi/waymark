@@ -60,11 +60,13 @@ WaymarkWorkspace/
         thread-summaries/
 ```
 
-The app can seed a sample workspace at:
+On first launch, the app can create a sample workspace at:
 
 ```txt
-/Users/hirokifuruichi/code/waymark/sample-workspace
+~/Documents/Waymark Sample Workspace
 ```
+
+Use the sample to see Waymark's cockpit with projects, tickets, decisions, ideas, and AI thread references before creating a real workspace.
 
 This repository is also a Waymark-readable workspace. Open the repo root:
 
@@ -90,7 +92,7 @@ Start with:
 
 ## Core Workflow
 
-1. Open or seed a Waymark workspace.
+1. Open, create, or sample a Waymark workspace.
 2. Review projects in the workspace dashboard.
 3. Capture project tickets, ideas, decisions, and AI thread references.
 4. Select a local ticket.

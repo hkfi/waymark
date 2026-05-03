@@ -98,6 +98,26 @@ tickets:
       - github-release-updater
     linked_threads: []
     generated_prompts: []
+  - id: first-run-sample-workspace
+    title: First-run sample workspace
+    status: done
+    priority: medium
+    summary: Make the downloaded app offer a safe sample workspace path so new users can explore Waymark before creating real project memory.
+    acceptance_criteria:
+      - First launch defaults to a user-owned sample path instead of a developer machine path.
+      - Missing sample workspace on first launch does not show a scary load error.
+      - The empty state has a clear create-sample action.
+      - Sample creation refuses to overwrite an existing workspace.
+      - Documentation mentions the sample workspace path for downloaded apps.
+    linked_files:
+      - src/app/model.ts
+      - src/app/hooks/useWorkspaceState.ts
+      - src/workspace.ts
+      - src/components/modals.tsx
+      - README.md
+    linked_decisions: []
+    linked_threads: []
+    generated_prompts: []
   - id: mvp-scope-governance
     title: MVP scope governance
     status: done

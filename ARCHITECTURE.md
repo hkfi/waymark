@@ -91,10 +91,12 @@ All writes must be explicit user actions:
 - create/update tickets
 - create ideas or decisions
 - create AI thread references
-- seed sample workspace
+- create a sample workspace
 - save generated prompts
 
 Avoid background rewrites. If a future feature wants to clean up or migrate files, it should present a preview or run as an explicit migration.
+
+Sample workspace creation is a first-run user action. The app may suggest `~/Documents/Waymark Sample Workspace`, but it must not create or overwrite sample files until the user clicks the sample action.
 
 ## Agent Handoff Model
 

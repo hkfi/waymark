@@ -27,7 +27,7 @@ export function EmptyState({
       <h2 className="m-0 text-[18px] font-semibold tracking-[-0.01em] text-ink">Open a Waymark workspace</h2>
       <p className="m-0 max-w-[460px] text-[13px] leading-[1.55]">
         Waymark reads <code>waymark.yaml</code> and per-project Markdown/YAML from a folder you choose. Point at an existing
-        workspace, or seed a sample to explore the cockpit.
+        workspace, or create a sample to explore the cockpit.
       </p>
       <div className="flex items-center gap-2 h-[26px] px-2 rounded-[3px] bg-surface-2 border border-line w-[420px] max-w-full font-mono text-[11px] text-ink-soft">
         <span className="w-1.5 h-1.5 rounded-full bg-ink-mute shrink-0" />
@@ -49,7 +49,7 @@ export function EmptyState({
           <RefreshCw size={13} /> Open
         </Btn>
         <Btn variant="primary" onClick={onSeed} disabled={!tauri}>
-          <Sparkles size={11} /> Seed sample
+          <Sparkles size={11} /> Create sample
         </Btn>
       </div>
     </div>
