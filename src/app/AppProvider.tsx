@@ -85,6 +85,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     clearEditingTicket: selection.clearEditingTicket,
     closeCapture: modals.closeCapture,
     closeFileModal: modals.closeFileModal,
+    closeRepoOnboarding: modals.closeRepoOnboarding,
     setError: feedback.setError,
     setNotice: feedback.setNotice,
   });
@@ -111,12 +112,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     createWorkspaceOpen: modals.createWorkspaceOpen,
     createProjectOpen: modals.createProjectOpen,
     fileModalOpen: Boolean(modals.fileModalMode),
+    repoOnboardingOpen: modals.repoOnboardingOpen,
     editingTicketOpen: Boolean(selection.editingTicket),
     openCapture: modals.openCapture,
     closeCapture: modals.closeCapture,
     closeCreateWorkspace: modals.closeCreateWorkspace,
     closeCreateProject: modals.closeCreateProject,
     closeFileModal: modals.closeFileModal,
+    closeRepoOnboarding: modals.closeRepoOnboarding,
     setNotice: feedback.setNotice,
   });
 

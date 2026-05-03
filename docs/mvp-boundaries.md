@@ -40,6 +40,8 @@ The Codex-backed assistant is explicitly promoted out of the MVP boundary becaus
 
 The GitHub Release updater is explicitly promoted out of the MVP boundary because desktop users need a safe way to receive signed app updates without a hosted Waymark backend.
 
+Guided repo onboarding is explicitly promoted out of the MVP boundary because users need a low-friction way to attach real repositories to a Waymark project and create the first useful project-memory files without learning the file contract by hand.
+
 These promotions allow:
 
 - detecting and launching the user's local Codex install
@@ -50,6 +52,10 @@ These promotions allow:
 - publishing signed desktop builds through GitHub Releases when the app version changes
 - checking GitHub Release updater metadata and showing an update indicator when a newer signed version exists
 - installing the update only after the user explicitly clicks the update indicator
+- explicitly adding user-picked local repos to a Waymark project
+- deterministic scaffolding of missing Waymark memory files after user review
+- optional Codex-generated drafts for repo summaries, initial tickets, decisions, handoff context, and repo agent instructions
+- previewing any generated repo context files before writing them into the selected repo
 
 These promotions do not allow:
 
@@ -60,6 +66,9 @@ These promotions do not allow:
 - making AI availability required for normal manual capture or handoff workflows
 - silent app update installation
 - GitHub API-backed product features beyond release publication and static updater metadata
+- automatic repo indexing, whole-repo prompt stuffing, or background analysis without a user-started onboarding action
+- broad importers from hosted services or arbitrary project management tools
+- direct Codex edits to repo or project memory files without a Waymark preview and explicit save
 
 ## Allowed In MVP
 

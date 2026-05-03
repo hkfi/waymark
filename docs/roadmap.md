@@ -22,6 +22,7 @@ Explicitly promoted:
 
 - Codex-backed Assistant for project-memory brainstorming and review-gated drafts through the user's local Codex auth
 - GitHub Release based app updates, gated by intentional version bumps and installed only after a user clicks the update indicator
+- Guided repo onboarding, where users explicitly add local repos to a project and review any generated Waymark memory or repo context files before saving
 
 Not included:
 
@@ -39,6 +40,7 @@ Goal: make the MVP pleasant enough for daily use.
 Likely work:
 
 - refine workspace file contract and examples
+- add guided repo onboarding for new and existing projects
 - improve validation messages
 - improve ticket creation/editing
 - improve handoff context picker
@@ -57,7 +59,6 @@ Candidates:
 - docs/file browser with Markdown preview
 - Git status display for linked repos
 - richer links/deploys/dashboard views
-- import helper for existing repos or folders
 - stale context and missing context detection
 - GitNexus-aware context suggestions
 - SQLite cache/index for derived data only

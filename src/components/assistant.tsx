@@ -96,6 +96,15 @@ export function AssistantView({
   const primaryDisabled = busy || (mode === "capture" ? !pasted.trim() : !canSend || !prompt.trim());
   const primaryLabel = mode === "brainstorm" ? "Send message" : mode === "structure" ? "Generate drafts" : "Import drafts";
   const primaryIcon = mode === "structure" ? <WandSparkles size={11} /> : mode === "capture" ? <FileInput size={11} /> : <Send size={11} />;
+  const onboardingPrompt = `Draft onboarding records for the linked repos in this Waymark project.
+
+Create concise, reviewable Waymark drafts only:
+- initial tickets that would make the project easier to hand off to an agent
+- decisions that capture important existing direction or constraints
+- ideas worth tracking
+- thread references only if the user should create or import a summary later
+
+Do not draft repo context files, AGENTS.md, or instructions to write into the linked repos. Do not ask to scan the repo contents.`;
 
   async function runAssistant(nextMode: AssistantMode) {
     setError(null);
@@ -315,6 +324,18 @@ export function AssistantView({
           </Btn>
           <Btn type="button" onClick={() => codexLogin()} disabled={!isTauri()}>
             <LogIn size={11} /> Connect Codex
+          </Btn>
+        </div>
+        <div className="mb-3">
+          <Btn
+            type="button"
+            onClick={() => {
+              setMode("structure");
+              setPrompt(onboardingPrompt);
+            }}
+            disabled={busy}
+          >
+            <Sparkles size={11} /> Draft onboarding records
           </Btn>
         </div>
 

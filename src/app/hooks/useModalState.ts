@@ -6,6 +6,7 @@ export function useModalState(setNotice: (value: string) => void) {
   const [captureOpen, setCaptureOpen] = useState(false);
   const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
+  const [repoOnboardingOpen, setRepoOnboardingOpen] = useState(false);
   const [fileModalMode, setFileModalMode] = useState<FileModalMode | null>(null);
 
   const openCreateWorkspace = useCallback(() => {
@@ -27,6 +28,7 @@ export function useModalState(setNotice: (value: string) => void) {
       captureOpen,
       createWorkspaceOpen,
       createProjectOpen,
+      repoOnboardingOpen,
       fileModalMode,
       openCapture: () => setCaptureOpen(true),
       closeCapture: () => setCaptureOpen(false),
@@ -34,10 +36,12 @@ export function useModalState(setNotice: (value: string) => void) {
       closeCreateWorkspace: () => setCreateWorkspaceOpen(false),
       openCreateProject,
       closeCreateProject: () => setCreateProjectOpen(false),
+      openRepoOnboarding: () => setRepoOnboardingOpen(true),
+      closeRepoOnboarding: () => setRepoOnboardingOpen(false),
       openFileModal: () => setFileModalMode("file"),
       openLinkModal: () => setFileModalMode("link"),
       closeFileModal: () => setFileModalMode(null),
     }),
-    [captureOpen, createProjectOpen, createWorkspaceOpen, fileModalMode, openCreateProject, openCreateWorkspace],
+    [captureOpen, createProjectOpen, createWorkspaceOpen, fileModalMode, openCreateProject, openCreateWorkspace, repoOnboardingOpen],
   );
 }

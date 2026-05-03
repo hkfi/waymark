@@ -65,6 +65,35 @@ Assistant outputs should not:
 - include secrets or account identifiers
 - silently create or modify project memory
 
+## Guided Repo Onboarding Loop
+
+Guided repo onboarding is an explicitly promoted AI-adjacent workflow. It should help users attach one or more local repositories to a Waymark project and create an initial project-memory layer around them.
+
+The intended loop:
+
+1. User selects a project and explicitly adds a local repo folder.
+2. Waymark records the repo reference in the project file only after the user confirms it.
+3. Waymark checks for missing or incomplete Waymark memory files and repo context files.
+4. Waymark can offer deterministic scaffolds and optional Codex-generated drafts.
+5. User reviews, edits, and accepts the proposed project summary, tickets, decisions, thread references, repo instructions, or handoff context.
+6. Waymark writes only the accepted files or records through its controlled write helpers.
+
+Repo onboarding should:
+
+- keep Markdown/YAML as the canonical project memory
+- prefer small inspectable drafts over large generated documents
+- distinguish Waymark workspace files from files that would be written into a linked repo
+- show what will be written before any project memory or repo context file changes
+- work without Codex by offering manual forms and deterministic scaffolds
+
+Repo onboarding should not:
+
+- automatically index a whole repo in the background
+- dump a whole repo into a prompt
+- require hosted service credentials or external API integrations
+- silently rewrite existing repo files
+- let Codex directly mutate workspace or repo files
+
 ## Prompt Standards
 
 Generated handoffs should include:

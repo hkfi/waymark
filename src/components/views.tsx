@@ -78,6 +78,7 @@ export function CockpitContent({
   onNav,
   onAddFile,
   onAddLink,
+  onOnboardRepo,
   onSaved,
 }: {
   nav: NavId;
@@ -96,6 +97,7 @@ export function CockpitContent({
   onNav: (id: NavId) => void;
   onAddFile: () => void;
   onAddLink: () => void;
+  onOnboardRepo: () => void;
   onSaved: () => Promise<void>;
 }) {
   const view: NavId | MainTab = nav === "home" && tab !== "overview" ? tab : nav;
@@ -145,6 +147,7 @@ export function CockpitContent({
         search={search}
         onAddFile={onAddFile}
         onAddLink={onAddLink}
+        onOnboardRepo={onOnboardRepo}
       />
     );
   }
@@ -520,12 +523,14 @@ function FilesView({
   search,
   onAddFile,
   onAddLink,
+  onOnboardRepo,
 }: {
   project: WaymarkProject;
   selectedTicket: Ticket | null;
   search: string;
   onAddFile: () => void;
   onAddLink: () => void;
+  onOnboardRepo: () => void;
 }) {
   const rows = [
     ...(project.config.repos ?? []).map((repo) => ({
@@ -584,6 +589,9 @@ function FilesView({
             </Btn>
             <Btn variant="ghost" onClick={onAddLink}>
               <Plus size={11} /> Link
+            </Btn>
+            <Btn variant="primary" onClick={onOnboardRepo}>
+              <Plus size={11} /> Onboard repo
             </Btn>
           </div>
         }

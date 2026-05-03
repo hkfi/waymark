@@ -4,7 +4,7 @@ import { openPath } from "../tauri";
 import type { NoteRecord, ThreadRecord, Ticket, TicketStatus, WaymarkProject, WorkspaceData } from "../types";
 import { buildPrompt } from "../workspace";
 import { activeLane, projectFile, resolveProjectPath, tokenEstimate, type InspectorMode } from "../app/model";
-import { Btn, Card, Cell, DataRow, EmptyRow, StatusChip, cx } from "./primitives";
+import { Btn, Card, Cell, CommandShortcutBadge, DataRow, EmptyRow, StatusChip, cx } from "./primitives";
 
 export function Inspector({
   mode,
@@ -421,7 +421,7 @@ function InspectorPrompt({
       </InspectorBody>
       <InspectorActions>
         <Btn variant="primary" onClick={onSendHandoff}>
-          <Sparkles size={11} /> Save & copy <span className="kbd bg-[oklch(0_0_0_/_0.22)] border-[oklch(0_0_0_/_0.3)] text-accent-ink">⌘↵</span>
+          <Sparkles size={11} /> Save & copy <CommandShortcutBadge value="↵" tone="primary" />
         </Btn>
         <Btn onClick={() => navigator.clipboard?.writeText(prompt).catch(() => undefined)}>
           <Copy size={11} /> Copy prompt

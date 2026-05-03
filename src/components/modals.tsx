@@ -1,8 +1,9 @@
 import { AlertTriangle, Check, FolderOpen, Plus, RefreshCw, Sparkles, Triangle } from "lucide-react";
-import { useState, type KeyboardEvent, type ReactNode } from "react";
-import type { LinkRecord, Priority, ProjectConfig, ProjectStage, ProjectStatus, ThreadRecord, Ticket, TicketStatus, WaymarkProject, WorkspaceData } from "../types";
+import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
+import type { LinkRecord, Priority, ProjectConfig, ProjectStage, ProjectStatus, RepoRef, ThreadRecord, Ticket, TicketStatus, WaymarkProject, WorkspaceData } from "../types";
 import { lines, recordId, type CaptureKind, type CapturePayload, type FileModalMode } from "../app/model";
-import { Btn, cx, Notice } from "./primitives";
+import { missingProjectScaffold, type ProjectScaffoldItem } from "../workspace";
+import { Btn, CommandShortcutBadge, cx, Notice } from "./primitives";
 
 export function EmptyState({
   tauri,
@@ -335,6 +336,182 @@ export function CreateProjectModal({
   );
 }
 
+export function RepoOnboardingModal({
+  tauri,
+  project,
+  onClose,
+  onChooseRepo,
+  onAddRepo,
+}: {
+  tauri: boolean;
+  project: WaymarkProject;
+  onClose: () => void;
+  onChooseRepo: () => Promise<string | null>;
+  onAddRepo: (repo: RepoRef) => Promise<void>;
+}) {
+  const [repoPath, setRepoPath] = useState("");
+  const [repoName, setRepoName] = useState("");
+  const [repoUrl, setRepoUrl] = useState("");
+  const [repoNameEdited, setRepoNameEdited] = useState(false);
+  const [scaffold, setScaffold] = useState<ProjectScaffoldItem[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const cleanPath = trimPath(repoPath);
+  const derivedName = repoName.trim() || titleFromPath(cleanPath);
+  const derivedId = uniqueRepoId(recordId(derivedName || "repo"), project.config.repos ?? []);
+  const duplicatePath = Boolean(cleanPath && (project.config.repos ?? []).some((repo) => repo.path && trimPath(repo.path) === cleanPath));
+  const previewRepo: RepoRef = {
+    id: derivedId,
+    name: derivedName || "Repository",
+    ...(cleanPath ? { path: cleanPath } : {}),
+    ...(repoUrl.trim() ? { url: repoUrl.trim() } : {}),
+  };
+
+  useEffect(() => {
+    if (!tauri) return;
+    let cancelled = false;
+    missingProjectScaffold(project)
+      .then((missing) => {
+        if (!cancelled) setScaffold(missing);
+      })
+      .catch((caught) => {
+        if (!cancelled) setError(caught instanceof Error ? caught.message : String(caught));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [project, tauri]);
+
+  async function chooseRepo() {
+    setError(null);
+    try {
+      const selected = await onChooseRepo();
+      if (!selected) return;
+      setRepoPath(selected);
+      if (!repoNameEdited) setRepoName(titleFromPath(selected));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }
+
+  return (
+    <ModalFrame title={`Onboard repo into ${project.config.name}`} onClose={onClose}>
+      <form
+        onKeyDown={submitOnCommandEnter}
+        onSubmit={async (event) => {
+          event.preventDefault();
+          if (!cleanPath) {
+            setError("Choose a local repo folder.");
+            return;
+          }
+          if (!derivedName.trim()) {
+            setError("Repo name is required.");
+            return;
+          }
+          if (duplicatePath) {
+            setError("This repo path is already linked to the project.");
+            return;
+          }
+          if (repoUrl.trim() && !/^https?:\/\//.test(repoUrl.trim())) {
+            setError("Repo URL must start with http:// or https://.");
+            return;
+          }
+
+          setBusy(true);
+          setError(null);
+          try {
+            await onAddRepo(previewRepo);
+          } catch (caught) {
+            setError(caught instanceof Error ? caught.message : String(caught));
+          } finally {
+            setBusy(false);
+          }
+        }}
+        className="flex flex-col gap-3"
+      >
+        <p className="m-0 text-[12.5px] leading-[1.55] text-ink-faint">
+          Add a local repository reference and create any missing Waymark project-memory scaffold files after review.
+        </p>
+        <div>
+          <FieldLabel>Repo folder</FieldLabel>
+          <div className="grid grid-cols-[1fr_auto] gap-2 mt-1">
+            <input
+              value={repoPath}
+              onChange={(event) => {
+                setRepoPath(event.target.value);
+                if (!repoNameEdited) setRepoName(titleFromPath(event.target.value));
+              }}
+              placeholder="~/code/app"
+              spellCheck={false}
+              className={cx(inputClass, "font-mono")}
+            />
+            <Btn type="button" onClick={chooseRepo} disabled={!tauri}>
+              <FolderOpen size={13} /> Browse
+            </Btn>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div>
+            <FieldLabel>Repo name</FieldLabel>
+            <input
+              value={repoName}
+              onChange={(event) => {
+                setRepoNameEdited(true);
+                setRepoName(event.target.value);
+              }}
+              placeholder={titleFromPath(cleanPath) || "App repo"}
+              className={cx(inputClass, "mt-1")}
+            />
+          </div>
+          <div>
+            <FieldLabel>Repo URL</FieldLabel>
+            <input value={repoUrl} onChange={(event) => setRepoUrl(event.target.value)} placeholder="https://github.com/..." className={cx(inputClass, "mt-1")} />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <FieldLabel>project.yaml repo entry</FieldLabel>
+            <pre className="mt-1 max-h-[150px] overflow-auto rounded-[4px] border border-line-soft bg-surface-1 p-2 text-[11px] leading-[1.45] text-ink-soft font-mono whitespace-pre-wrap">
+{repoPreview(previewRepo)}
+            </pre>
+          </div>
+          <div>
+            <FieldLabel>Missing memory scaffold</FieldLabel>
+            <div className="mt-1 rounded-[4px] border border-line-soft bg-surface-1 p-2 min-h-[96px]">
+              {scaffold.length ? (
+                <ul className="m-0 pl-4 text-[11.5px] leading-[1.7] text-ink-soft">
+                  {scaffold.map((item) => <li key={item.path}>{item.label}</li>)}
+                </ul>
+              ) : (
+                <div className="flex items-center gap-1.5 text-[11.5px] text-ink-faint">
+                  <Check size={12} /> Project scaffold is complete.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+        {!tauri ? (
+          <Notice tone="warn">
+            <AlertTriangle size={13} /> Repo onboarding writes local files, so it is only enabled in Tauri.
+          </Notice>
+        ) : null}
+        {duplicatePath ? (
+          <Notice tone="warn">
+            <AlertTriangle size={13} /> This repo path is already linked to the project.
+          </Notice>
+        ) : null}
+        {error ? <Notice tone="err"><AlertTriangle size={13} /> {error}</Notice> : null}
+        <div className="flex gap-2 justify-end">
+          <Btn type="button" variant="ghost" onClick={onClose}>Cancel</Btn>
+          <Btn type="submit" variant="primary" disabled={!tauri || busy || !cleanPath || duplicatePath}>
+            <Plus size={11} /> Save repo
+          </Btn>
+        </div>
+      </form>
+    </ModalFrame>
+  );
+}
+
 /* ------------------------------- editing ------------------------------- */
 
 function FieldLabel({ children }: { children: ReactNode }) {
@@ -356,6 +533,36 @@ function submitOnCommandEnter(event: KeyboardEvent<HTMLFormElement>) {
   if (event.key !== "Enter" || (!event.metaKey && !event.ctrlKey)) return;
   event.preventDefault();
   event.currentTarget.requestSubmit();
+}
+
+function trimPath(path: string) {
+  return path.trim().replace(/\/+$/, "");
+}
+
+function titleFromPath(path: string) {
+  const parts = trimPath(path).split("/").filter(Boolean);
+  const name = parts[parts.length - 1] ?? "";
+  return name
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (letter: string) => letter.toUpperCase());
+}
+
+function uniqueRepoId(baseId: string, repos: RepoRef[]) {
+  const base = recordId(baseId) || "repo";
+  const existing = new Set(repos.map((repo) => repo.id));
+  if (!existing.has(base)) return base;
+  let index = 2;
+  while (existing.has(`${base}-${index}`)) index += 1;
+  return `${base}-${index}`;
+}
+
+function repoPreview(repo: RepoRef) {
+  return [
+    `- id: ${repo.id}`,
+    `  name: ${repo.name}`,
+    repo.path ? `  path: ${repo.path}` : null,
+    repo.url ? `  url: ${repo.url}` : null,
+  ].filter(Boolean).join("\n");
 }
 
 function isLineSelected(value: string, id: string) {
@@ -894,7 +1101,7 @@ export function CaptureModal({
         <div className="flex gap-2 justify-end">
           <Btn type="button" variant="ghost" onClick={onClose}>Cancel</Btn>
           <Btn type="submit" variant="primary" disabled={busy || !title.trim()}>
-            <Plus size={11} /> Capture <span className="kbd bg-[oklch(0_0_0_/_0.22)] border-[oklch(0_0_0_/_0.3)] text-accent-ink">⌘↵</span>
+            <Plus size={11} /> Capture <CommandShortcutBadge value="↵" tone="primary" />
           </Btn>
         </div>
       </form>

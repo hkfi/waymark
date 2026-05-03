@@ -109,6 +109,12 @@ export function buildAssistantPrompt(project: WaymarkProject, userPrompt: string
       current_focus: project.config.current_focus ?? "",
       stage: project.config.stage,
     },
+    repos: (project.config.repos ?? []).map((repo) => ({
+      id: repo.id,
+      name: repo.name,
+      path: repo.path ?? "",
+      url: repo.url ?? "",
+    })),
     tickets: project.tickets.map((ticket) => ({
       id: ticket.id,
       title: ticket.title,

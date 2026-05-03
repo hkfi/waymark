@@ -2,7 +2,8 @@ import { Bot, Download, FileText, FolderOpen, GitBranch, Inbox, LayoutGrid, Ligh
 import { useMemo, type ButtonHTMLAttributes, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import type { AppUpdateStatus, Ticket, WaymarkProject, WorkspaceData } from "../types";
 import { projectColor, projectMark, projectStatusKind, type MainTab, type NavId } from "../app/model";
-import { Btn, cx } from "./primitives";
+import { NAV_SHORTCUTS } from "../app/hooks/useKeyboardShortcuts";
+import { Btn, CommandShortcutBadge, cx } from "./primitives";
 
 export function WorkspaceToolbar({
   workspace,
@@ -156,6 +157,7 @@ export function Sidebar({
   onSelectProject,
   nav,
   onNav,
+  showShortcutHints,
   onRefresh,
   onSeed,
   onCreateWorkspace,
@@ -169,6 +171,7 @@ export function Sidebar({
   onSelectProject: (slug: string) => void;
   nav: NavId;
   onNav: (id: NavId) => void;
+  showShortcutHints: boolean;
   onRefresh: () => void;
   onSeed: () => void;
   onCreateWorkspace: () => void;
@@ -253,6 +256,8 @@ export function Sidebar({
             count={item.count}
             icon={item.icon}
             active={nav === item.id}
+            shortcut={navShortcutLabel(item.id)}
+            showShortcut={showShortcutHints}
             onClick={() => onNav(item.id)}
           />
         ))}
@@ -340,12 +345,16 @@ function NavItem({
   count,
   icon: Icon,
   active,
+  shortcut,
+  showShortcut,
   onClick,
 }: {
   label: string;
   count?: number;
   icon: LucideIcon;
   active: boolean;
+  shortcut?: string;
+  showShortcut: boolean;
   onClick: () => void;
 }) {
   return (
@@ -361,19 +370,29 @@ function NavItem({
       <span className={cx("w-3.5 inline-flex shrink-0", active ? "text-accent" : "text-ink-faint")}>
         <Icon size={13} />
       </span>
-      <span>{label}</span>
-      {typeof count === "number" && count > 0 ? (
-        <span
-          className={cx(
-            "ml-auto font-mono text-[10.5px] px-1.5 rounded-[3px] leading-[15px]",
-            active ? "bg-[oklch(0.78_0.135_75_/_0.18)] text-accent" : "bg-surface-3 text-ink-mute",
-          )}
-        >
-          {count}
-        </span>
-      ) : null}
+      <span className="min-w-0 truncate">{label}</span>
+      <span className="ml-auto inline-grid grid-flow-col auto-cols-max items-center gap-1.5 shrink-0">
+        {typeof count === "number" && count > 0 ? (
+          <span
+            className={cx(
+              "font-mono text-[10.5px] px-1.5 rounded-[3px] leading-[15px]",
+              active ? "bg-[oklch(0.78_0.135_75_/_0.18)] text-accent" : "bg-surface-3 text-ink-mute",
+            )}
+          >
+            {count}
+          </span>
+        ) : null}
+        {showShortcut && shortcut ? (
+          <CommandShortcutBadge value={shortcut} tone={active ? "active" : "subtle"} />
+        ) : null}
+      </span>
     </button>
   );
+}
+
+function navShortcutLabel(id: NavId) {
+  const index = NAV_SHORTCUTS.indexOf(id);
+  return index >= 0 ? String(index + 1) : undefined;
 }
 
 function ProjectRow({
@@ -542,7 +561,7 @@ export function MainHeader({
             onChange={(event) => onSearch(event.target.value)}
             className="flex-1 min-w-0 bg-transparent border-0 outline-0 text-[12.5px] text-ink placeholder:text-ink-mute"
           />
-          <span className="kbd">⌘K</span>
+          <CommandShortcutBadge value="K" tone="subtle" />
         </div>
         <Btn
           variant={gapsOnly ? "default" : "ghost"}
@@ -556,7 +575,7 @@ export function MainHeader({
           <Plus size={13} /> Capture
         </Btn>
         <Btn variant="primary" onClick={onSendHandoff} disabled={handoffDisabled}>
-          <Sparkles size={11} /> <span className="max-w-[180px] truncate">{handoffLabel}</span> <span className="kbd bg-[oklch(0_0_0_/_0.22)] border-[oklch(0_0_0_/_0.3)] text-accent-ink">⌘↵</span>
+          <Sparkles size={11} /> <span className="max-w-[180px] truncate">{handoffLabel}</span> <CommandShortcutBadge value="↵" tone="primary" />
         </Btn>
       </div>
     </>

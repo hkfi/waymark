@@ -77,6 +77,31 @@ tickets:
       - codex-subscription-connector
     linked_threads: []
     generated_prompts: []
+  - id: guided-repo-onboarding
+    title: Guided repo onboarding
+    status: next
+    priority: high
+    summary: Let users explicitly add local repos to a Waymark project, scaffold missing project memory, and optionally ask Codex to draft review-gated repo context files.
+    acceptance_criteria:
+      - A user can add one or more local repo folders to a Waymark project through an explicit action.
+      - Added repos are saved as readable project.yaml repo references and remain editable by hand.
+      - The onboarding flow detects missing Waymark memory files and presents deterministic scaffolds before writing them.
+      - Codex can optionally draft a project summary, initial tickets, decisions, handoff context, and repo agent instructions.
+      - Generated drafts distinguish Waymark workspace files from files that would be written into a linked repo.
+      - No generated file or project-memory record is written until the user previews and accepts it.
+      - The flow does not perform background repo indexing, whole-repo prompt stuffing, hosted service import, or direct Codex file mutation.
+      - Documentation records this as promoted MVP scope with local-first and review-gated constraints.
+    linked_files:
+      - docs/roadmap.md
+      - docs/mvp-boundaries.md
+      - docs/ai-workflows.md
+      - src/workspace.ts
+      - src/components/modals.tsx
+      - src/components/assistant.tsx
+    linked_decisions:
+      - guided-repo-onboarding
+    linked_threads: []
+    generated_prompts: []
   - id: signed-github-release-updater
     title: Signed GitHub Release updater
     status: done

@@ -25,16 +25,18 @@ type KeyboardShortcutDeps = {
   createWorkspaceOpen: boolean;
   createProjectOpen: boolean;
   fileModalOpen: boolean;
+  repoOnboardingOpen: boolean;
   editingTicketOpen: boolean;
   openCapture: () => void;
   closeCapture: () => void;
   closeCreateWorkspace: () => void;
   closeCreateProject: () => void;
   closeFileModal: () => void;
+  closeRepoOnboarding: () => void;
   setNotice: (value: string | null) => void;
 };
 
-const NAV_SHORTCUTS: NavId[] = ["home", "assistant", "queue", "decisions", "threads", "ideas", "files", "inbox"];
+export const NAV_SHORTCUTS: NavId[] = ["home", "assistant", "queue", "decisions", "threads", "ideas", "files", "inbox"];
 const TICKET_ORDER: TicketStatus[] = [...LANES_IN_QUEUE, "done"];
 
 export function useKeyboardShortcuts({
@@ -59,20 +61,26 @@ export function useKeyboardShortcuts({
   createWorkspaceOpen,
   createProjectOpen,
   fileModalOpen,
+  repoOnboardingOpen,
   editingTicketOpen,
   openCapture,
   closeCapture,
   closeCreateWorkspace,
   closeCreateProject,
   closeFileModal,
+  closeRepoOnboarding,
   setNotice,
 }: KeyboardShortcutDeps) {
   useEffect(() => {
-    const modalOpen = captureOpen || createWorkspaceOpen || createProjectOpen || fileModalOpen || editingTicketOpen;
+    const modalOpen = captureOpen || createWorkspaceOpen || createProjectOpen || fileModalOpen || repoOnboardingOpen || editingTicketOpen;
 
     function closeTopModal() {
       if (editingTicketOpen) {
         clearEditingTicket();
+        return true;
+      }
+      if (repoOnboardingOpen) {
+        closeRepoOnboarding();
         return true;
       }
       if (fileModalOpen) {
@@ -244,6 +252,7 @@ export function useKeyboardShortcuts({
     closeCreateProject,
     closeCreateWorkspace,
     closeFileModal,
+    closeRepoOnboarding,
     createProjectOpen,
     createWorkspaceOpen,
     editTicket,
@@ -253,6 +262,7 @@ export function useKeyboardShortcuts({
     openCapture,
     project,
     refreshWorkspace,
+    repoOnboardingOpen,
     search,
     searchInputRef,
     selectTicket,

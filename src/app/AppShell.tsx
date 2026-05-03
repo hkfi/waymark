@@ -7,6 +7,7 @@ import {
   CreateWorkspaceModal,
   EmptyState,
   FileLinkModal,
+  RepoOnboardingModal,
   TicketEditModal,
 } from "../components/modals";
 import { Inspector } from "../components/inspector";
@@ -24,6 +25,7 @@ import {
   useWorkspace,
 } from "./AppProvider";
 import { useAppUpdates } from "./hooks/useAppUpdates";
+import { useCommandKeyHint } from "./hooks/useCommandKeyHint";
 
 export function AppShell() {
   const layout = useLayout();
@@ -100,6 +102,7 @@ function SidebarRegion() {
   const modals = useModals();
   const navigation = useNavigation();
   const workspace = useWorkspace();
+  const showShortcutHints = useCommandKeyHint();
 
   return (
     <Sidebar
@@ -110,6 +113,7 @@ function SidebarRegion() {
       onSelectProject={workspace.selectProject}
       nav={navigation.nav}
       onNav={navigation.setNav}
+      showShortcutHints={showShortcutHints}
       onRefresh={() => workspace.refresh()}
       onSeed={workspace.seedWorkspace}
       onCreateWorkspace={modals.openCreateWorkspace}
@@ -216,6 +220,13 @@ function MainContentRegion() {
               return;
             }
             modals.openLinkModal();
+          }}
+          onOnboardRepo={() => {
+            if (!isTauri()) {
+              feedback.setNotice("Run Waymark through Tauri to onboard local repos.");
+              return;
+            }
+            modals.openRepoOnboarding();
           }}
           onSaved={() => workspace.refresh()}
         />
@@ -363,6 +374,15 @@ function ModalRegion() {
           onClose={modals.closeFileModal}
           onAddFile={actions.addFile}
           onAddLink={actions.addLink}
+        />
+      ) : null}
+      {modals.repoOnboardingOpen && selectedProject ? (
+        <RepoOnboardingModal
+          tauri={isTauri()}
+          project={selectedProject}
+          onClose={modals.closeRepoOnboarding}
+          onChooseRepo={workspace.chooseDirectory}
+          onAddRepo={actions.onboardRepo}
         />
       ) : null}
     </>

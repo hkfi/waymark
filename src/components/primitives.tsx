@@ -37,6 +37,33 @@ export function Btn({
   );
 }
 
+export function CommandShortcutBadge({
+  value,
+  tone = "default",
+}: {
+  value: string;
+  tone?: "default" | "primary" | "active" | "subtle";
+}) {
+  const toneClass = {
+    default: "bg-surface-input border-line text-ink-faint",
+    primary: "bg-[oklch(0_0_0_/_0.22)] border-[oklch(0_0_0_/_0.3)] text-accent-ink",
+    active: "border-accent-deep bg-accent-soft text-accent",
+    subtle: "bg-surface-2 border-line-soft text-ink-faint",
+  }[tone];
+
+  return (
+    <span
+      className={cx(
+        "h-[17px] min-w-[30px] justify-center inline-flex items-center gap-0.5 rounded-[3px] border border-b-2 px-1 font-mono text-[10.5px] leading-none tabular-nums shrink-0",
+        toneClass,
+      )}
+    >
+      <span className="font-sans text-[12px] leading-none">⌘</span>
+      <span className="leading-none">{value}</span>
+    </span>
+  );
+}
+
 export function SectionHead({ children, more }: { children: ReactNode; more?: ReactNode }) {
   return (
     <div className="flex items-center gap-2.5 mb-2 px-0.5 min-w-0">

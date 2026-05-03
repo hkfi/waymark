@@ -11,6 +11,7 @@ import type {
   LinkRecord,
   NoteRecord,
   ProjectConfig,
+  RepoRef,
   ThreadRecord,
   Ticket,
   WaymarkProject,
@@ -77,6 +78,22 @@ const linkSchema = z.object({
 
 const today = () => new Date().toISOString().slice(0, 10);
 
+export type ProjectScaffoldItem = {
+  label: string;
+  path: string;
+  kind: "file" | "directory";
+};
+
+const PROJECT_SCAFFOLD_ITEMS: ProjectScaffoldItem[] = [
+  { label: "tickets.yaml", path: "tickets.yaml", kind: "file" },
+  { label: "links.yaml", path: "links.yaml", kind: "file" },
+  { label: "threads.yaml", path: "threads.yaml", kind: "file" },
+  { label: "ideas/", path: "ideas", kind: "directory" },
+  { label: "decisions/", path: "decisions", kind: "directory" },
+  { label: "ai/prompts/", path: "ai/prompts", kind: "directory" },
+  { label: "ai/thread-summaries/", path: "ai/thread-summaries", kind: "directory" },
+];
+
 function isoDate(value: unknown): string | undefined {
   if (value === undefined || value === null || value === "") return undefined;
   if (value instanceof Date) {
@@ -113,6 +130,25 @@ function slugify(value: string) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
+}
+
+function normalizeRepoPath(path: string) {
+  return path.trim().replace(/\/+$/, "");
+}
+
+function basename(path: string) {
+  const parts = normalizeRepoPath(path).split("/").filter(Boolean);
+  return parts[parts.length - 1] ?? "";
+}
+
+function uniqueRepoId(baseId: string, repos: RepoRef[]) {
+  const base = slugify(baseId) || "repo";
+  const existing = new Set(repos.map((repo) => repo.id));
+  if (!existing.has(base)) return base;
+
+  let index = 2;
+  while (existing.has(`${base}-${index}`)) index += 1;
+  return `${base}-${index}`;
 }
 
 function frontmatter(raw: string) {
@@ -475,6 +511,64 @@ export async function createProject(workspace: WorkspaceData, config: ProjectCon
   await writeTextFile(joinPath(projectRoot, "tickets.yaml"), dumpYaml({ version: 1, tickets: [] }));
   await writeTextFile(joinPath(projectRoot, "links.yaml"), dumpYaml({ version: 1, links: [] }));
   await writeTextFile(joinPath(projectRoot, "threads.yaml"), dumpYaml({ version: 1, threads: [] }));
+}
+
+export async function missingProjectScaffold(project: WaymarkProject) {
+  const missing: ProjectScaffoldItem[] = [];
+  for (const item of PROJECT_SCAFFOLD_ITEMS) {
+    if (!(await pathExists(joinPath(project.rootPath, item.path)))) {
+      missing.push(item);
+    }
+  }
+  return missing;
+}
+
+export async function saveProjectConfig(project: WaymarkProject, config: ProjectConfig) {
+  await writeTextFile(joinPath(project.rootPath, "project.yaml"), dumpYaml(config));
+}
+
+export async function ensureProjectScaffold(project: WaymarkProject) {
+  const missing = await missingProjectScaffold(project);
+  for (const item of missing) {
+    const path = joinPath(project.rootPath, item.path);
+    if (item.kind === "directory") {
+      await createDirAll(path);
+    } else if (item.path === "tickets.yaml") {
+      await writeTextFile(path, dumpYaml({ version: 1, tickets: [] }));
+    } else if (item.path === "links.yaml") {
+      await writeTextFile(path, dumpYaml({ version: 1, links: [] }));
+    } else if (item.path === "threads.yaml") {
+      await writeTextFile(path, dumpYaml({ version: 1, threads: [] }));
+    }
+  }
+  return missing;
+}
+
+export async function addRepoToProject(project: WaymarkProject, repo: RepoRef) {
+  const repos = project.config.repos ?? [];
+  const cleanPath = repo.path ? normalizeRepoPath(repo.path) : undefined;
+  const cleanUrl = repo.url?.trim();
+  if (!repo.name.trim()) throw new Error("Repo name is required.");
+  if (!cleanPath && !cleanUrl) throw new Error("Repo path or URL is required.");
+  if (cleanUrl && !/^https?:\/\//.test(cleanUrl)) {
+    throw new Error("Repo URL must start with http:// or https://.");
+  }
+  if (cleanPath && repos.some((candidate) => candidate.path && normalizeRepoPath(candidate.path) === cleanPath)) {
+    throw new Error("This repo path is already linked to the project.");
+  }
+
+  const cleanRepo: RepoRef = {
+    id: uniqueRepoId(repo.id || repo.name || basename(cleanPath ?? cleanUrl ?? "repo"), repos),
+    name: repo.name.trim(),
+    ...(cleanPath ? { path: cleanPath } : {}),
+    ...(cleanUrl ? { url: cleanUrl } : {}),
+  };
+  const scaffolded = await ensureProjectScaffold(project);
+  await saveProjectConfig(project, {
+    ...project.config,
+    repos: [...repos, cleanRepo],
+  });
+  return { repo: cleanRepo, scaffolded };
 }
 
 export async function saveTickets(project: WaymarkProject, tickets: Ticket[]) {

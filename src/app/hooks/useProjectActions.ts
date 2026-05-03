@@ -1,7 +1,8 @@
 import { useCallback, useMemo } from "react";
 import { isTauri } from "../../tauri";
-import type { LinkRecord, ThreadRecord, Ticket, TicketStatus, WaymarkProject } from "../../types";
+import type { LinkRecord, RepoRef, ThreadRecord, Ticket, TicketStatus, WaymarkProject } from "../../types";
 import {
+  addRepoToProject,
   buildPrompt,
   createNote,
   saveGeneratedPrompts,
@@ -20,6 +21,7 @@ type ProjectActionDeps = {
   clearEditingTicket: () => void;
   closeCapture: () => void;
   closeFileModal: () => void;
+  closeRepoOnboarding: () => void;
   setError: (value: string | null) => void;
   setNotice: (value: string | null) => void;
 };
@@ -33,6 +35,7 @@ export function useProjectActions({
   clearEditingTicket,
   closeCapture,
   closeFileModal,
+  closeRepoOnboarding,
   setError,
   setNotice,
 }: ProjectActionDeps) {
@@ -228,6 +231,30 @@ export function useProjectActions({
     [closeFileModal, project, refresh, setError, setNotice],
   );
 
+  const onboardRepo = useCallback(
+    async (repo: RepoRef) => {
+      if (!project) return;
+      if (!isTauri()) {
+        setNotice("Run Waymark through Tauri to onboard local repos.");
+        return;
+      }
+
+      try {
+        const saved = await addRepoToProject(project, repo);
+        const scaffoldText = saved.scaffolded.length
+          ? ` Created ${saved.scaffolded.length} missing scaffold item${saved.scaffolded.length === 1 ? "" : "s"}.`
+          : "";
+        setNotice(`Onboarded ${saved.repo.name}.${scaffoldText}`);
+        closeRepoOnboarding();
+        await refresh();
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+        throw caught;
+      }
+    },
+    [closeRepoOnboarding, project, refresh, setError, setNotice],
+  );
+
   return useMemo(
     () => ({
       sendHandoff,
@@ -236,7 +263,8 @@ export function useProjectActions({
       capture,
       addFile,
       addLink,
+      onboardRepo,
     }),
-    [addFile, addLink, capture, changeStatus, saveTicket, sendHandoff],
+    [addFile, addLink, capture, changeStatus, onboardRepo, saveTicket, sendHandoff],
   );
 }

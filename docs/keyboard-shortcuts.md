@@ -4,6 +4,8 @@ Waymark shortcuts are designed for the cockpit workflow: move between project-me
 
 Use `Cmd` on macOS and `Ctrl` on Windows/Linux.
 
+Holding `Cmd`/`Ctrl` reveals shortcut badges on commandable cockpit navigation items.
+
 ## Global
 
 | Shortcut | Action |
