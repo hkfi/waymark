@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, CSSProperties, ReactNode } from "react";
+import type { ButtonHTMLAttributes, CSSProperties, HTMLAttributes, ReactNode } from "react";
 import type { TicketStatus } from "../types";
 
 export function cx(...parts: Array<string | false | null | undefined>) {
@@ -49,9 +49,9 @@ export function SectionHead({ children, more }: { children: ReactNode; more?: Re
   );
 }
 
-export function Card({ children, className }: { children: ReactNode; className?: string }) {
+export function Card({ children, className, ...rest }: HTMLAttributes<HTMLDivElement> & { children: ReactNode }) {
   return (
-    <div className={cx("border border-line rounded-[5px] bg-surface-2 overflow-hidden", className)}>
+    <div {...rest} className={cx("border border-line rounded-[5px] bg-surface-2 overflow-hidden", className)}>
       {children}
     </div>
   );

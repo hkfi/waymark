@@ -1,5 +1,5 @@
 import { AlertTriangle, Check, FolderOpen, Plus, RefreshCw, Sparkles, Triangle } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useState, type KeyboardEvent, type ReactNode } from "react";
 import type { LinkRecord, Priority, ProjectConfig, ProjectStage, ProjectStatus, ThreadRecord, Ticket, TicketStatus, WaymarkProject, WorkspaceData } from "../types";
 import { lines, recordId, type CaptureKind, type CapturePayload, type FileModalMode } from "../app/model";
 import { Btn, cx, Notice } from "./primitives";
@@ -85,6 +85,7 @@ export function CreateWorkspaceModal({
   return (
     <ModalFrame title="Create workspace" onClose={onClose}>
       <form
+        onKeyDown={submitOnCommandEnter}
         onSubmit={async (event) => {
           event.preventDefault();
           const cleanPath = path.trim();
@@ -181,6 +182,7 @@ export function CreateProjectModal({
   return (
     <ModalFrame title="Create project" onClose={onClose}>
       <form
+        onKeyDown={submitOnCommandEnter}
         onSubmit={async (event) => {
           event.preventDefault();
           const cleanName = name.trim();
@@ -350,6 +352,12 @@ const inputClass =
 const textareaClass =
   "w-full bg-surface-input-2 border border-line-soft text-ink rounded-[3px] px-2 py-1.5 outline-0 focus:border-accent-deep min-h-[74px] resize-y leading-[1.45] font-mono text-[11.5px]";
 
+function submitOnCommandEnter(event: KeyboardEvent<HTMLFormElement>) {
+  if (event.key !== "Enter" || (!event.metaKey && !event.ctrlKey)) return;
+  event.preventDefault();
+  event.currentTarget.requestSubmit();
+}
+
 function isLineSelected(value: string, id: string) {
   return lines(value).includes(id);
 }
@@ -439,6 +447,7 @@ export function TicketEditModal({
   return (
     <ModalFrame title={`Edit ${ticket.id}`} onClose={onClose}>
       <form
+        onKeyDown={submitOnCommandEnter}
         onSubmit={async (event) => {
           event.preventDefault();
           if (!title.trim()) return;
@@ -529,6 +538,7 @@ export function FileLinkModal({
   return (
     <ModalFrame title={mode === "file" ? "Add linked file" : "Add project link"} onClose={onClose}>
       <form
+        onKeyDown={submitOnCommandEnter}
         onSubmit={async (event) => {
           event.preventDefault();
           setBusy(true);
@@ -672,6 +682,14 @@ export function CaptureModal({
   return (
     <ModalFrame title={`Capture into ${project.config.name}`} onClose={onClose}>
       <form
+        onKeyDown={(event) => {
+          if ((event.metaKey || event.ctrlKey) && /^[1-4]$/.test(event.key)) {
+            event.preventDefault();
+            setKind((["ticket", "idea", "decision", "thread"] as CaptureKind[])[Number(event.key) - 1]);
+            return;
+          }
+          submitOnCommandEnter(event);
+        }}
         onSubmit={async (event) => {
           event.preventDefault();
           if (!title.trim()) return;

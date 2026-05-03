@@ -1,6 +1,6 @@
 import { AlertTriangle, Bot, Check, CheckSquare, FileInput, Loader2, LogIn, Plus, Send, Sparkles, Square, WandSparkles } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import {
   WAYMARK_DRAFT_JSON_SCHEMA,
   buildAssistantPrompt,
@@ -92,6 +92,7 @@ export function AssistantView({
 
   const canSend = isTauri() && status.state === "ready" && ack && !busy;
   const draftCount = drafts.tickets.length + drafts.ideas.length + drafts.decisions.length + drafts.threads.length;
+  const selectedDraftCount = Object.values(selected).filter(Boolean).length;
   const primaryDisabled = busy || (mode === "capture" ? !pasted.trim() : !canSend || !prompt.trim());
   const primaryLabel = mode === "brainstorm" ? "Send message" : mode === "structure" ? "Generate drafts" : "Import drafts";
   const primaryIcon = mode === "structure" ? <WandSparkles size={11} /> : mode === "capture" ? <FileInput size={11} /> : <Send size={11} />;
@@ -253,8 +254,19 @@ export function AssistantView({
     }
   }
 
+  function handleCommandEnter(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "Enter" || (!event.metaKey && !event.ctrlKey)) return;
+    event.preventDefault();
+    const inDraftReview = event.target instanceof HTMLElement && Boolean(event.target.closest("[data-draft-review]"));
+    if (inDraftReview) {
+      if (!busy && selectedDraftCount > 0) void saveSelectedDrafts();
+      return;
+    }
+    if (!primaryDisabled) void runAssistant(mode);
+  }
+
   return (
-    <div className="assistant-layout grid gap-3.5">
+    <div className="assistant-layout grid gap-3.5" onKeyDown={handleCommandEnter}>
       <div className="flex items-start gap-3 justify-between">
         <div>
           <h2 className="m-0 text-[16px] text-ink font-semibold flex items-center gap-2">
@@ -322,12 +334,6 @@ export function AssistantView({
           <textarea
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-                event.preventDefault();
-                void runAssistant(mode);
-              }
-            }}
             placeholder={mode === "structure" ? "Describe the tickets, ideas, decisions, or thread notes you want drafted…" : "Ask Codex about project direction, tradeoffs, risks, or next steps…"}
             className="assistant-input min-h-[132px]"
           />
@@ -451,7 +457,7 @@ function DraftReview({
 }) {
   const selectedCount = Object.values(selected).filter(Boolean).length;
   return (
-    <Card>
+    <Card data-draft-review="true">
       <div className="px-3 py-2 border-b border-line-soft flex items-center gap-2">
         <div className="text-[11px] uppercase tracking-[0.09em] text-ink-faint font-semibold flex-1">Draft review</div>
         <span className="font-mono text-[10px] text-ink-mute">{selectedCount}/{count}</span>

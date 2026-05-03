@@ -1,4 +1,5 @@
-import { AlertTriangle, Check, Plus, Triangle } from "lucide-react";
+import { AlertTriangle, Check, Info, Plus, Triangle, X } from "lucide-react";
+import type { ReactNode } from "react";
 import { isTauri, openPath } from "../tauri";
 import {
   CaptureModal,
@@ -9,7 +10,7 @@ import {
   TicketEditModal,
 } from "../components/modals";
 import { Inspector } from "../components/inspector";
-import { Btn, Notice } from "../components/primitives";
+import { Btn, cx } from "../components/primitives";
 import { MainHeader, PaneResizeHandle, Sidebar, WorkspaceToolbar } from "../components/shell";
 import { CockpitContent } from "../components/views";
 import {
@@ -55,6 +56,7 @@ export function AppShell() {
         <InspectorRegion />
       </div>
       <ModalRegion />
+      <FeedbackToasts />
     </div>
   );
 }
@@ -173,7 +175,6 @@ function MainContentRegion() {
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto px-[18px] pt-3.5 pb-7">
-      <FeedbackNotices />
       {!workspace.data ? (
         <EmptyState
           tauri={isTauri()}
@@ -223,28 +224,56 @@ function MainContentRegion() {
   );
 }
 
-function FeedbackNotices() {
+function FeedbackToasts() {
   const feedback = useFeedback();
 
   return (
-    <>
+    <div className="toast-region" aria-live="polite" aria-atomic="true">
       {feedback.notice ? (
-        <Notice tone="ok">
-          <Check size={13} /> {feedback.notice}
-        </Notice>
+        <Toast tone="ok" onClose={() => feedback.setNotice(null)}>
+          {feedback.notice}
+        </Toast>
       ) : null}
       {feedback.error ? (
-        <Notice tone="err">
-          <AlertTriangle size={13} /> {feedback.error}
-        </Notice>
+        <Toast tone="err" onClose={() => feedback.setError(null)}>
+          {feedback.error}
+        </Toast>
       ) : null}
       {!isTauri() ? (
-        <Notice tone="warn">
-          <AlertTriangle size={13} />
+        <Toast tone="warn" onClose={undefined}>
           Run with <code>pnpm tauri dev</code> to load and write the local Markdown/YAML workspace.
-        </Notice>
+        </Toast>
       ) : null}
-    </>
+    </div>
+  );
+}
+
+function Toast({
+  tone,
+  onClose,
+  children,
+}: {
+  tone: "ok" | "warn" | "err";
+  onClose?: () => void;
+  children: ReactNode;
+}) {
+  const Icon = tone === "ok" ? Check : tone === "warn" ? Info : AlertTriangle;
+  const toneClass = {
+    ok: "toast-ok",
+    warn: "toast-warn",
+    err: "toast-err",
+  }[tone];
+
+  return (
+    <div className={cx("toast", toneClass)} role={tone === "err" ? "alert" : "status"}>
+      <Icon size={14} className="toast-icon" />
+      <div className="toast-body">{children}</div>
+      {onClose ? (
+        <button type="button" className="toast-close" onClick={onClose} aria-label="Dismiss notification">
+          <X size={13} />
+        </button>
+      ) : null}
+    </div>
   );
 }
 

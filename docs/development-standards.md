@@ -25,6 +25,14 @@
 - Do not turn operational data into decorative card grids when a table or row list is clearer.
 - Controls should have stable dimensions and deliberate typography.
 - Use restrained color: accent for primary actions, muted tones for metadata, warnings for readiness issues.
+- Keep keyboard shortcuts aligned with [`keyboard-shortcuts.md`](keyboard-shortcuts.md). Shortcuts may open explicit write workflows or submit visible forms, but must not perform hidden background rewrites.
+
+## Feedback Patterns
+
+- Use app-level toasts for transient operation feedback such as reloaded workspaces, saved prompts, captured records, linked files, update checks, and command availability messages.
+- Do not render transient operation feedback as inline cards in the main cockpit flow; it shifts the content and makes routine actions feel heavier than they are.
+- Keep inline notices for contextual, workflow-local information that should remain near the control it explains, such as form validation errors, disabled Tauri-only form warnings, Assistant connection context, and draft parsing warnings.
+- App-level toast messages should flow through the shared feedback state rather than each component inventing its own notification UI.
 
 ## Tauri And Filesystem
 

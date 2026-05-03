@@ -2,6 +2,7 @@ import { createContext, useContext, useMemo, type Context, type ReactNode } from
 import type { ProjectConfig } from "../types";
 import { useFeedbackState } from "./hooks/useFeedbackState";
 import { useFilterState } from "./hooks/useFilterState";
+import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useModalState } from "./hooks/useModalState";
 import { useNavigationState } from "./hooks/useNavigationState";
 import { usePaneLayout } from "./hooks/usePaneLayout";
@@ -85,6 +86,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
     closeCapture: modals.closeCapture,
     closeFileModal: modals.closeFileModal,
     setError: feedback.setError,
+    setNotice: feedback.setNotice,
+  });
+
+  useKeyboardShortcuts({
+    project: workspaceState.selectedProject,
+    nav: navigation.nav,
+    tab: navigation.tab,
+    setNav: navigation.setNav,
+    selectedTicket: selection.selectedTicket,
+    selectTicket: selection.selectTicket,
+    toggleMulti: selection.toggleMulti,
+    editTicket: selection.editTicket,
+    clearEditingTicket: selection.clearEditingTicket,
+    setInspectorMode: selection.setInspectorMode,
+    changeStatus: projectActions.changeStatus,
+    sendHandoff: projectActions.sendHandoff,
+    refreshWorkspace: workspaceState.refresh,
+    chooseWorkspace: workspaceState.chooseWorkspace,
+    search: filters.search,
+    setSearch: filters.setSearch,
+    searchInputRef: filters.searchInputRef,
+    captureOpen: modals.captureOpen,
+    createWorkspaceOpen: modals.createWorkspaceOpen,
+    createProjectOpen: modals.createProjectOpen,
+    fileModalOpen: Boolean(modals.fileModalMode),
+    editingTicketOpen: Boolean(selection.editingTicket),
+    openCapture: modals.openCapture,
+    closeCapture: modals.closeCapture,
+    closeCreateWorkspace: modals.closeCreateWorkspace,
+    closeCreateProject: modals.closeCreateProject,
+    closeFileModal: modals.closeFileModal,
     setNotice: feedback.setNotice,
   });
 

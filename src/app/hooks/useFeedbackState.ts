@@ -10,6 +10,12 @@ export function useFeedbackState() {
     return () => window.clearTimeout(id);
   }, [notice]);
 
+  useEffect(() => {
+    if (!error) return;
+    const id = window.setTimeout(() => setError(null), 9000);
+    return () => window.clearTimeout(id);
+  }, [error]);
+
   return useMemo(
     () => ({
       error,
