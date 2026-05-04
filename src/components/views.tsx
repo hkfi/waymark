@@ -1,10 +1,9 @@
 import { AlertTriangle, ArrowRight, Check, Copy, FileText, Link2, MessageSquareText, Plus } from "lucide-react";
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { openPath } from "../tauri";
 import type { NoteRecord, ThreadRecord, Ticket, WaymarkProject, WorkspaceData } from "../types";
-import { ticketWarnings } from "../workspace";
-import { LANES_IN_QUEUE, LANE_LABEL, activeLane, buildActivity, matchesSearch, projectFile, resolveProjectPath, ticketHasFlag, type Lane, type MainTab, type NavId } from "../app/model";
-import { AssistantView } from "./assistant";
+import { shouldIncludeContextInHandoff, ticketWarnings } from "../workspace";
+import { LANES_IN_QUEUE, LANE_LABEL, activeLane, buildActivity, matchesSearch, projectFile, resolveProjectPath, ticketHasFlag, type Lane, type NavId } from "../app/model";
 import { Btn, Card, Cell, DataRow, EmptyRow, Flag, Pin, SectionHead, cx } from "./primitives";
 
 function Stats({ project }: { project: WaymarkProject }) {
@@ -63,7 +62,6 @@ function Stats({ project }: { project: WaymarkProject }) {
 
 export function CockpitContent({
   nav,
-  tab,
   project,
   workspace,
   selectedTicketId,
@@ -79,10 +77,8 @@ export function CockpitContent({
   onAddFile,
   onAddLink,
   onOnboardRepo,
-  onSaved,
 }: {
   nav: NavId;
-  tab: MainTab;
   project: WaymarkProject;
   workspace: WorkspaceData;
   selectedTicketId: string | null;
@@ -98,15 +94,8 @@ export function CockpitContent({
   onAddFile: () => void;
   onAddLink: () => void;
   onOnboardRepo: () => void;
-  onSaved: () => Promise<void>;
 }) {
-  const view: NavId | MainTab = nav === "home" && tab !== "overview" ? tab : nav;
-
-  if (view === "assistant") {
-    return <AssistantView project={project} onSaved={onSaved} />;
-  }
-
-  if (view === "queue" || view === "tickets") {
+  if (nav === "tickets") {
     return (
       <>
         <Stats project={project} />
@@ -118,30 +107,27 @@ export function CockpitContent({
           toggleMulti={toggleMulti}
           search={search}
           gapsOnly={gapsOnly}
+          title="Tickets"
+          lanesToShow={[...LANES_IN_QUEUE, "done"]}
         />
       </>
     );
   }
 
-  if (view === "decisions") {
-    return <Decisions decisions={project.decisions} search={search} onSelect={onSelectNote} />;
-  }
-
-  if (view === "threads") {
-    return <ThreadsView project={project} search={search} onSelect={onSelectThread} />;
-  }
-
-  if (view === "ideas") {
-    return <NotesView title="Ideas" notes={project.ideas} search={search} empty="No ideas captured." onSelect={onSelectNote} />;
-  }
-
-  if (view === "inbox") {
-    return <InboxView project={project} workspace={workspace} search={search} gapsOnly={gapsOnly} />;
-  }
-
-  if (view === "files") {
+  if (nav === "memory") {
     return (
-      <FilesView
+      <MemoryView
+        project={project}
+        search={search}
+        onSelectNote={onSelectNote}
+        onSelectThread={onSelectThread}
+      />
+    );
+  }
+
+  if (nav === "context") {
+    return (
+      <ContextView
         project={project}
         selectedTicket={selectedTicket}
         search={search}
@@ -163,9 +149,14 @@ export function CockpitContent({
         toggleMulti={toggleMulti}
         search={search}
         gapsOnly={gapsOnly}
-        onViewAll={() => onNav("queue")}
+        title="Now / Next"
+        lanesToShow={["now", "next"]}
+        empty="No Now or Next tickets match."
+        onViewAll={() => onNav("tickets")}
       />
-      <Decisions decisions={project.decisions} search={search} limit={8} onViewAll={() => onNav("decisions")} onSelect={onSelectNote} />
+      <WarningsPanel project={project} workspace={workspace} search={search} gapsOnly={gapsOnly} />
+      <ContextPreview project={project} search={search} onViewAll={() => onNav("context")} />
+      <Decisions decisions={project.decisions} search={search} limit={6} onSelect={onSelectNote} />
       <IdeasAndActivity project={project} workspace={workspace} search={search} onSelectNote={onSelectNote} onSelectThread={onSelectThread} onSelectTicket={onSelectTicket} />
     </>
   );
@@ -181,6 +172,9 @@ function Queue({
   toggleMulti,
   search,
   gapsOnly,
+  title = "Tickets",
+  lanesToShow = [...LANES_IN_QUEUE, "done"],
+  empty = "No tickets match.",
   onViewAll,
 }: {
   project: WaymarkProject;
@@ -190,6 +184,9 @@ function Queue({
   toggleMulti: (id: string) => void;
   search: string;
   gapsOnly: boolean;
+  title?: string;
+  lanesToShow?: Lane[];
+  empty?: string;
   onViewAll?: () => void;
 }) {
   const lanes = useMemo(() => {
@@ -205,11 +202,11 @@ function Queue({
         ticket.linked_files?.some((file) => file.toLowerCase().includes(filter))
       );
     });
-    return LANES_IN_QUEUE.map((lane) => ({
+    return lanesToShow.map((lane) => ({
       lane,
       items: matching.filter((ticket) => ticket.status === lane),
     })).filter((group) => group.items.length > 0);
-  }, [project, search, gapsOnly]);
+  }, [project, search, gapsOnly, lanesToShow]);
 
   const activeCount = project.tickets.filter(
     (ticket) => ticket.status !== "done" && ticket.status !== "idea",
@@ -229,11 +226,11 @@ function Queue({
           ) : undefined
         }
       >
-        Queue <span className="font-mono text-[10px] text-ink-mute font-normal tracking-normal normal-case">{activeCount} active</span>
+        {title} <span className="font-mono text-[10px] text-ink-mute font-normal tracking-normal normal-case">{activeCount} active</span>
       </SectionHead>
       <Card>
         {lanes.length === 0 ? (
-          <EmptyRow>No tickets match.</EmptyRow>
+          <EmptyRow>{empty}</EmptyRow>
         ) : (
           lanes.map((group) => (
             <div key={group.lane}>
@@ -337,6 +334,114 @@ function TicketRow({
       </Cell>
       <Cell mono size={10.5} tone="mute" align="end">{ticket.priority ?? "med"}</Cell>
     </DataRow>
+  );
+}
+
+/* ------------------------------- memory -------------------------------- */
+
+type MemoryFilter = "all" | "ideas" | "decisions" | "threads";
+
+function MemoryView({
+  project,
+  search,
+  onSelectNote,
+  onSelectThread,
+}: {
+  project: WaymarkProject;
+  search: string;
+  onSelectNote: (note: NoteRecord) => void;
+  onSelectThread: (thread: ThreadRecord) => void;
+}) {
+  const [filter, setFilter] = useState<MemoryFilter>("all");
+  const rows = [
+    ...project.decisions.map((note) => ({
+      kind: "decision" as const,
+      id: note.id,
+      title: note.title,
+      meta: note.status ?? "accepted",
+      date: note.date ?? "—",
+      value: note.body,
+      onClick: () => onSelectNote(note),
+    })),
+    ...project.ideas.map((note) => ({
+      kind: "idea" as const,
+      id: note.id,
+      title: note.title,
+      meta: note.status ?? "open",
+      date: note.date ?? "—",
+      value: note.body,
+      onClick: () => onSelectNote(note),
+    })),
+    ...project.threads.map((thread) => ({
+      kind: "thread" as const,
+      id: thread.id,
+      title: thread.title,
+      meta: `${thread.provider} · ${thread.status}`,
+      date: thread.summary_file ?? "—",
+      value: thread.url ?? thread.summary_file ?? "",
+      onClick: () => onSelectThread(thread),
+    })),
+  ]
+    .filter((row) => filter === "all" || `${row.kind}s` === filter)
+    .filter((row) => matchesSearch([row.kind, row.id, row.title, row.meta, row.date, row.value], search));
+
+  const counts = {
+    all: project.decisions.length + project.ideas.length + project.threads.length,
+    ideas: project.ideas.length,
+    decisions: project.decisions.length,
+    threads: project.threads.length,
+  };
+
+  return (
+    <div className="mb-[22px]">
+      <SectionHead
+        more={
+          <div className="inline-flex items-center gap-1 rounded-[4px] border border-line-soft bg-surface-2 p-0.5">
+            {(["all", "ideas", "decisions", "threads"] as MemoryFilter[]).map((item) => (
+              <button
+                key={item}
+                onClick={() => setFilter(item)}
+                className={cx(
+                  "h-6 px-2 rounded-[3px] text-[11px] capitalize",
+                  filter === item ? "bg-surface-4 text-ink" : "text-ink-faint hover:text-ink",
+                )}
+              >
+                {item} <span className="font-mono text-[10px] text-ink-mute">{counts[item]}</span>
+              </button>
+            ))}
+          </div>
+        }
+      >
+        Memory <span className="font-mono text-[10px] text-ink-mute font-normal normal-case tracking-normal">{rows.length}</span>
+      </SectionHead>
+      <Card>
+        {rows.length === 0 ? (
+          <EmptyRow>{search ? "No memory records match." : "No memory records yet."}</EmptyRow>
+        ) : (
+          rows.map((row) => (
+            <DataRow
+              key={`${row.kind}-${row.id}`}
+              cols="grid-cols-decision-narrow xl:grid-cols-decision"
+              height={32}
+              paddingX={14}
+              gap={12}
+              onClick={row.onClick}
+              ariaLabel={`Open ${row.kind} ${row.title}`}
+            >
+              <Cell mono size={9.5} tone="mute" className="uppercase tracking-[0.07em]">{row.kind}</Cell>
+              <Cell tone="ink">{row.title}</Cell>
+              <div className="justify-self-start min-w-0 max-w-full font-mono text-[10px] text-ink-faint bg-surface-row-selected border border-line px-1.5 py-px rounded-[3px] truncate">
+                {row.meta}
+              </div>
+              <Cell mono size={10.5} tone="mute">{row.date}</Cell>
+              <Cell mono size={10.5} tone="mute" align="end" title={row.id} className="hidden xl:block">
+                {row.id}
+              </Cell>
+            </DataRow>
+          ))
+        )}
+      </Card>
+    </div>
   );
 }
 
@@ -517,7 +622,55 @@ function ThreadsView({
   );
 }
 
-function FilesView({
+type ContextRow = {
+  kind: string;
+  id: string;
+  label: string;
+  value: string;
+  actionPath?: string;
+  includeInHandoff?: boolean;
+};
+
+function contextRows(project: WaymarkProject): ContextRow[] {
+  return [
+    ...(project.config.repos ?? []).map((repo) => ({
+      kind: "repo",
+      id: repo.id,
+      label: repo.name,
+      value: repo.path ?? repo.url ?? repo.name,
+      actionPath: repo.path ?? repo.url,
+      includeInHandoff: true,
+    })),
+    ...Object.entries(project.config.links ?? {}).map(([id, url]) => ({
+      kind: "legacy",
+      id,
+      label: id,
+      value: url,
+      actionPath: url,
+      includeInHandoff: true,
+    })),
+    ...project.links.map((link) => ({
+      kind: link.type,
+      id: link.id,
+      label: link.label,
+      value: link.url ?? link.path ?? "",
+      actionPath: link.url ?? (link.path ? resolveProjectPath(project, link.path) : undefined),
+      includeInHandoff: shouldIncludeContextInHandoff(link),
+    })),
+    ...project.tickets.flatMap((ticket) =>
+      (ticket.linked_files ?? []).map((file) => ({
+        kind: "ticket file",
+        id: ticket.id,
+        label: ticket.title,
+        value: file,
+        actionPath: resolveProjectPath(project, file),
+        includeInHandoff: true,
+      })),
+    ),
+  ];
+}
+
+function ContextView({
   project,
   selectedTicket,
   search,
@@ -532,52 +685,7 @@ function FilesView({
   onAddLink: () => void;
   onOnboardRepo: () => void;
 }) {
-  const rows = [
-    ...(project.config.repos ?? []).map((repo) => ({
-      kind: "repo",
-      id: repo.id,
-      label: repo.name,
-      value: repo.path ?? repo.url ?? repo.name,
-      actionPath: repo.path ?? repo.url,
-    })),
-    ...Object.entries(project.config.links ?? {}).map(([id, url]) => ({
-      kind: "link",
-      id,
-      label: id,
-      value: url,
-      actionPath: url,
-    })),
-    ...project.links.map((link) => ({
-      kind: link.type,
-      id: link.id,
-      label: link.label,
-      value: link.url,
-      actionPath: link.url,
-    })),
-    ...project.tickets.flatMap((ticket) =>
-      (ticket.linked_files ?? []).map((file) => ({
-        kind: "file",
-        id: ticket.id,
-        label: ticket.title,
-        value: file,
-        actionPath: resolveProjectPath(project, file),
-      })),
-    ),
-    ...project.decisions.map((decision) => ({
-      kind: "decision",
-      id: decision.id,
-      label: decision.title,
-      value: decision.path,
-      actionPath: decision.path,
-    })),
-    ...project.ideas.map((idea) => ({
-      kind: "idea",
-      id: idea.id,
-      label: idea.title,
-      value: idea.path,
-      actionPath: idea.path,
-    })),
-  ].filter((row) => matchesSearch([row.kind, row.id, row.label, row.value], search));
+  const rows = contextRows(project).filter((row) => matchesSearch([row.kind, row.id, row.label, row.value], search));
 
   return (
     <div className="mb-[22px]">
@@ -596,11 +704,11 @@ function FilesView({
           </div>
         }
       >
-        Files & links <span className="font-mono text-[10px] text-ink-mute font-normal normal-case tracking-normal">{rows.length}{selectedTicket ? ` · ${selectedTicket.id}` : ""}</span>
+        Context <span className="font-mono text-[10px] text-ink-mute font-normal normal-case tracking-normal">{rows.length}{selectedTicket ? ` · ${selectedTicket.id}` : ""}</span>
       </SectionHead>
       <Card>
         {rows.length === 0 ? (
-          <EmptyRow>{search ? "No files or links match." : "No file context yet."}</EmptyRow>
+          <EmptyRow>{search ? "No context matches." : "No project context yet."}</EmptyRow>
         ) : (
           rows.map((row) => (
             <DataRow
@@ -619,6 +727,17 @@ function FilesView({
                 <div className="truncate font-mono text-[10.5px] text-ink-mute" title={row.value}>{row.value}</div>
               </div>
               <div className="flex items-center gap-1 justify-end shrink-0">
+                <span
+                  title={row.includeInHandoff ? "Included in handoff prompts" : "Excluded from handoff prompts"}
+                  className={cx(
+                    "hidden xl:inline-flex font-mono text-[9.5px] px-1.5 py-px rounded-[3px] border",
+                    row.includeInHandoff
+                      ? "text-lane-done border-[oklch(0.74_0.13_150_/_0.28)] bg-[oklch(0.74_0.13_150_/_0.10)]"
+                      : "text-ink-mute border-line-soft bg-surface-2",
+                  )}
+                >
+                  {row.includeInHandoff ? "handoff" : "private"}
+                </span>
                 <button
                   onClick={(event) => {
                     event.stopPropagation();
@@ -650,7 +769,60 @@ function FilesView({
   );
 }
 
-function InboxView({
+function ContextPreview({
+  project,
+  search,
+  onViewAll,
+}: {
+  project: WaymarkProject;
+  search: string;
+  onViewAll: () => void;
+}) {
+  const rows = contextRows(project)
+    .filter((row) => matchesSearch([row.kind, row.id, row.label, row.value], search))
+    .slice(0, 6);
+
+  return (
+    <div className="mb-[22px]">
+      <SectionHead
+        more={
+          <button
+            onClick={onViewAll}
+            className="text-[11px] text-ink-mute inline-flex items-center gap-1 hover:text-ink-soft cursor-pointer"
+          >
+            Open Context <ArrowRight size={11} />
+          </button>
+        }
+      >
+        Key Context <span className="font-mono text-[10px] text-ink-mute font-normal normal-case tracking-normal">{contextRows(project).length}</span>
+      </SectionHead>
+      <Card>
+        {rows.length === 0 ? (
+          <EmptyRow>No context yet.</EmptyRow>
+        ) : (
+          rows.map((row) => (
+            <DataRow
+              key={`${row.kind}-${row.id}-${row.value}`}
+              cols="grid-cols-link"
+              height={28}
+              paddingX={12}
+              gap={10}
+              onClick={row.actionPath ? () => openPath(row.actionPath as string) : undefined}
+              ariaLabel={`Open ${row.kind} ${row.label}`}
+            >
+              <Cell mono size={9.5} tone="mute" className="uppercase tracking-[0.07em]">{row.kind}</Cell>
+              <Cell mono size={10.5} tone="faint">{row.id}</Cell>
+              <Cell size={12} tone="soft" title={row.label}>{row.label}</Cell>
+              <Cell mono size={10.5} tone="mute" align="end" title={row.value}>{row.value}</Cell>
+            </DataRow>
+          ))
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function WarningsPanel({
   project,
   workspace,
   search,
@@ -677,7 +849,7 @@ function InboxView({
   return (
     <div className="mb-[22px]">
       <SectionHead>
-        Inbox <span className="font-mono text-[10px] text-ink-mute font-normal normal-case tracking-normal">{rows.length}</span>
+        Warnings <span className="font-mono text-[10px] text-ink-mute font-normal normal-case tracking-normal">{rows.length}</span>
       </SectionHead>
       <Card>
         {rows.length === 0 ? (

@@ -22,6 +22,8 @@
 
 - Waymark is a dense cockpit, not a marketing page.
 - Keep information scannable: sidebars, rows, lists, compact panels, and clear selected states.
+- Keep primary navigation focused on Overview, Tickets, Memory, and Context. Assistant belongs in the right drawer as an everywhere-available capability, not as a main destination.
+- Treat `links.yaml` as the typed Context registry for repos, files, docs, deploys, dashboards, services, domains, design links, and other project resources.
 - Do not turn operational data into decorative card grids when a table or row list is clearer.
 - Controls should have stable dimensions and deliberate typography.
 - Use restrained color: accent for primary actions, muted tones for metadata, warnings for readiness issues.

@@ -11,7 +11,8 @@ Included:
 - explicit Waymark workspace format
 - project overview
 - local tickets as roadmap/execution items
-- ideas and decisions
+- Memory for ideas, decisions, and thread references
+- Context for typed repos, files, docs, deploys, dashboards, services, domains, design links, and other resources
 - manual AI thread references
 - agent handoff prompt generation
 - self-workspace for Waymark development
@@ -44,6 +45,7 @@ Likely work:
 - improve validation messages
 - improve ticket creation/editing
 - improve handoff context picker
+- refine the simplified Overview/Tickets/Memory/Context cockpit IA
 - harden the Codex Assistant review drawer and CLI fallback behavior
 - include project standards in generated handoffs
 - make the self-workspace more complete

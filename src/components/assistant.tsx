@@ -1,8 +1,9 @@
-import { AlertTriangle, Bot, Check, CheckSquare, FileInput, Loader2, LogIn, Plus, Send, Sparkles, Square, WandSparkles } from "lucide-react";
+import { AlertTriangle, Bot, Check, CheckSquare, FileInput, Loader2, LogIn, Plus, RefreshCw, Send, SlidersHorizontal, Sparkles, Square, WandSparkles } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import {
   WAYMARK_DRAFT_JSON_SCHEMA,
+  type AssistantContextSelection,
   buildAssistantPrompt,
   emptyDraftSet,
   normalizeNoteDraft,
@@ -17,6 +18,8 @@ import { lines, recordId } from "../app/model";
 import { Btn, Card, Notice, cx } from "./primitives";
 
 type AssistantMode = "brainstorm" | "structure" | "capture";
+type AssistantModelChoice = "latest" | "gpt-5.5" | "gpt-5.4" | "gpt-5.4-mini";
+type AssistantReasoningEffort = "low" | "medium" | "high" | "xhigh";
 type AssistantMessage = {
   role: "user" | "assistant" | "system";
   content: string;
@@ -31,14 +34,18 @@ type CodexAssistantDelta = {
 
 export function AssistantView({
   project,
+  selection,
   onSaved,
 }: {
   project: WaymarkProject;
+  selection?: AssistantContextSelection;
   onSaved: () => Promise<void>;
 }) {
   const [status, setStatus] = useState<CodexStatus>({ state: "unavailable", path: null, detail: "Not checked yet." });
   const [mode, setMode] = useState<AssistantMode>("brainstorm");
   const [route, setRoute] = useState<CodexRoute>("app-server");
+  const [model, setModel] = useState<AssistantModelChoice>("latest");
+  const [reasoningEffort, setReasoningEffort] = useState<AssistantReasoningEffort>("high");
   const [prompt, setPrompt] = useState("");
   const [pasted, setPasted] = useState("");
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
@@ -46,10 +53,15 @@ export function AssistantView({
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [ack, setAck] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [checkingCodex, setCheckingCodex] = useState(false);
+  const [modelSettingsOpen, setModelSettingsOpen] = useState(false);
+  const [codexCheckFeedback, setCodexCheckFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const activeStreamRef = useRef<string | null>(null);
   const appSessionRef = useRef<string | null>(null);
+  const appSessionSettingsRef = useRef<string | null>(null);
+  const modelSettingsRef = useRef<HTMLDivElement | null>(null);
   const conversationRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -60,6 +72,24 @@ export function AssistantView({
       appSessionRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (!modelSettingsOpen) return;
+    function closeOnOutside(event: PointerEvent) {
+      if (!modelSettingsRef.current?.contains(event.target as Node)) {
+        setModelSettingsOpen(false);
+      }
+    }
+    function closeOnEscape(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") setModelSettingsOpen(false);
+    }
+    document.addEventListener("pointerdown", closeOnOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [modelSettingsOpen]);
 
   useEffect(() => {
     conversationRef.current?.scrollTo({
@@ -96,6 +126,9 @@ export function AssistantView({
   const primaryDisabled = busy || (mode === "capture" ? !pasted.trim() : !canSend || !prompt.trim());
   const primaryLabel = mode === "brainstorm" ? "Send message" : mode === "structure" ? "Generate drafts" : "Import drafts";
   const primaryIcon = mode === "structure" ? <WandSparkles size={11} /> : mode === "capture" ? <FileInput size={11} /> : <Send size={11} />;
+  const connectionActionLabel = status.state === "ready" ? "Switch account" : "Connect";
+  const selectedModel = model === "latest" ? null : model;
+  const codexSettingsKey = `${project.rootPath}:${selectedModel ?? "latest"}:${reasoningEffort}`;
   const onboardingPrompt = `Draft onboarding records for the linked repos in this Waymark project.
 
 Create concise, reviewable Waymark drafts only:
@@ -105,6 +138,35 @@ Create concise, reviewable Waymark drafts only:
 - thread references only if the user should create or import a summary later
 
 Do not draft repo context files, AGENTS.md, or instructions to write into the linked repos. Do not ask to scan the repo contents.`;
+
+  async function refreshCodexStatus() {
+    if (!isTauri() || checkingCodex) return;
+    setCheckingCodex(true);
+    setCodexCheckFeedback("Checking Codex status...");
+    try {
+      const nextStatus = await codexStatus();
+      setStatus(nextStatus);
+      setCodexCheckFeedback(`${connectionStatusLabel(nextStatus.state)}. Last checked just now.`);
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : String(caught);
+      setStatus({ state: "errored", path: null, detail: message });
+      setCodexCheckFeedback(`Check failed: ${message}`);
+    } finally {
+      setCheckingCodex(false);
+    }
+  }
+
+  async function openCodexConnection() {
+    if (!isTauri()) return;
+    setCodexCheckFeedback(status.state === "ready" ? "Opening OpenAI account switch..." : "Opening OpenAI connection...");
+    try {
+      await codexLogin();
+      setCodexCheckFeedback(`${status.state === "ready" ? "Account switch" : "Connection"} opened. Check again after it finishes.`);
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : String(caught);
+      setCodexCheckFeedback(`Could not open OpenAI connection: ${message}`);
+    }
+  }
 
   async function runAssistant(nextMode: AssistantMode) {
     setError(null);
@@ -122,22 +184,31 @@ Do not draft repo context files, AGENTS.md, or instructions to write into the li
         setSelected(defaultSelection(parsed));
         setMessages((current) => [...current, { role: "assistant", content: "Parsed pasted output into reviewable Waymark drafts.", route: "cli" }]);
       } else {
-        const assistantPrompt = buildAssistantPrompt(project, input.trim(), nextMode);
+        const assistantPrompt = buildAssistantPrompt(project, input.trim(), nextMode, selection);
         const request = {
           cwd: project.rootPath,
           prompt: assistantPrompt,
           schema: nextMode === "structure" ? WAYMARK_DRAFT_JSON_SCHEMA : undefined,
           timeoutMs: 180_000,
+          model: selectedModel,
+          modelReasoningEffort: reasoningEffort,
         };
         let streamSessionId: string | null = null;
         const result = route === "app-server"
           ? await (async () => {
               try {
                 let sessionId = appSessionRef.current;
+                if (sessionId && appSessionSettingsRef.current !== codexSettingsKey) {
+                  void codexAppSessionStop(sessionId);
+                  appSessionRef.current = null;
+                  appSessionSettingsRef.current = null;
+                  sessionId = null;
+                }
                 if (!sessionId) {
-                  const session = await codexAppSessionStart(project.rootPath);
+                  const session = await codexAppSessionStart(project.rootPath, selectedModel, reasoningEffort);
                   sessionId = session.id;
                   appSessionRef.current = session.id;
+                  appSessionSettingsRef.current = codexSettingsKey;
                 }
                 streamSessionId = sessionId;
                 activeStreamRef.current = sessionId;
@@ -282,7 +353,7 @@ Do not draft repo context files, AGENTS.md, or instructions to write into the li
             <Bot size={16} className="text-accent" /> Assistant
           </h2>
           <p className="m-0 mt-1 text-[12.5px] text-ink-faint max-w-[720px] leading-[1.5]">
-            Chat with Codex, then generate reviewed Waymark drafts when an idea is ready.
+            Chat with Codex using the current project and selection, then save reviewed Waymark drafts.
           </p>
         </div>
         <StatusPill status={status} route={route} />
@@ -296,37 +367,98 @@ Do not draft repo context files, AGENTS.md, or instructions to write into the li
       {error ? <Notice tone="err"><AlertTriangle size={13} /> {error}</Notice> : null}
       {notice ? <Notice tone="ok"><Check size={13} /> {notice}</Notice> : null}
 
-      <Card className="p-3.5">
-        <div className="flex flex-wrap gap-2 items-center mb-3">
-          <div className="assistant-mode-switch" aria-label="Assistant action">
+      <Card className="p-3.5 overflow-visible">
+        <div className="grid gap-2.5 mb-3">
+          <div className="assistant-mode-switch w-full grid grid-cols-3" aria-label="Assistant action">
             <ModeButton active={mode === "brainstorm"} onClick={() => setMode("brainstorm")} title="Chat without creating drafts">Chat</ModeButton>
             <ModeButton active={mode === "structure"} onClick={() => setMode("structure")} title="Ask Codex to propose editable Waymark drafts">Draft records</ModeButton>
+            <button
+              type="button"
+              onClick={() => setMode("capture")}
+              className={cx(
+                "h-7 rounded-[4px] border text-[12px] inline-flex items-center justify-center gap-1.5",
+                mode === "capture"
+                  ? "bg-accent text-accent-ink border-accent-deep font-semibold"
+                  : "bg-transparent text-ink-faint border-transparent hover:text-ink",
+              )}
+              title="Paste structured draft output from another Codex session"
+            >
+              <FileInput size={12} /> Import
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => setMode("capture")}
-            className={cx(
-              "h-7 px-2.5 rounded-[4px] border text-[12px] inline-flex items-center gap-1.5",
-              mode === "capture"
-                ? "bg-accent text-accent-ink border-accent-deep font-semibold"
-                : "bg-surface-2 text-ink-faint border-line-soft hover:text-ink",
-            )}
-            title="Paste structured draft output from another Codex session"
-          >
-            <FileInput size={12} /> Import drafts
-          </button>
-          <select value={route} onChange={(event) => setRoute(event.target.value as CodexRoute)} className="ml-auto bg-surface-input-2 border border-line-soft rounded-[4px] h-7 px-2 text-[12px] text-ink-soft">
-            <option value="app-server">App server preferred</option>
-            <option value="cli">CLI fallback</option>
-          </select>
-          <Btn type="button" onClick={() => codexStatus().then(setStatus)} disabled={!isTauri()}>
-            Check Codex
-          </Btn>
-          <Btn type="button" onClick={() => codexLogin()} disabled={!isTauri()}>
-            <LogIn size={11} /> Connect Codex
-          </Btn>
-        </div>
-        <div className="mb-3">
+
+          <div className="rounded-[5px] border border-line-soft bg-surface-input-2 p-2 grid gap-2">
+            <div className="flex items-start gap-3 justify-between">
+              <div className="min-w-0">
+                <div className="text-[10px] uppercase tracking-[0.09em] text-ink-mute font-semibold">
+                  Assistant connection
+                </div>
+                <div className="mt-0.5 text-[12px] text-ink-soft truncate" title={status.detail}>
+                  {status.state === "ready" ? "Connected through Codex" : `OpenAI account is ${connectionStatusLabel(status.state).toLowerCase()}`}
+                </div>
+              </div>
+              <StatusPill status={status} route={route} compact />
+            </div>
+            <div className="flex flex-wrap items-end gap-1.5">
+              <AssistantSelect label="Route" value={route} onChange={(value) => setRoute(value as CodexRoute)} className="min-w-[104px] flex-1">
+                <option value="app-server">App server</option>
+                <option value="cli">CLI</option>
+              </AssistantSelect>
+              <div ref={modelSettingsRef} className="relative">
+                <Btn
+                  type="button"
+                  onClick={() => setModelSettingsOpen((open) => !open)}
+                  aria-haspopup="dialog"
+                  aria-expanded={modelSettingsOpen}
+                  title="Model and reasoning settings"
+                  className="min-w-[126px] justify-center"
+                >
+                  <SlidersHorizontal size={11} />
+                  {modelLabel(model)} · {reasoningLabel(reasoningEffort)}
+                </Btn>
+                {modelSettingsOpen ? (
+                  <div
+                    role="dialog"
+                    aria-label="Model settings"
+                    className="absolute right-0 top-[calc(100%+6px)] z-50 w-[264px] rounded-[6px] border border-line bg-surface-2 p-2.5 shadow-[0_14px_42px_oklch(0_0_0_/_0.42)]"
+                  >
+                    <SettingGroup label="Model">
+                      <div className="grid grid-cols-2 gap-1">
+                        {(["latest", "gpt-5.5", "gpt-5.4", "gpt-5.4-mini"] as AssistantModelChoice[]).map((choice) => (
+                          <SettingChoice key={choice} active={model === choice} onClick={() => setModel(choice)}>
+                            {modelLabel(choice)}
+                          </SettingChoice>
+                        ))}
+                      </div>
+                    </SettingGroup>
+                    <SettingGroup label="Reasoning">
+                      <div className="grid grid-cols-4 gap-1">
+                        {(["low", "medium", "high", "xhigh"] as AssistantReasoningEffort[]).map((choice) => (
+                          <SettingChoice key={choice} active={reasoningEffort === choice} onClick={() => setReasoningEffort(choice)}>
+                            {reasoningLabel(choice)}
+                          </SettingChoice>
+                        ))}
+                      </div>
+                    </SettingGroup>
+                  </div>
+                ) : null}
+              </div>
+              <Btn type="button" onClick={refreshCodexStatus} disabled={!isTauri() || checkingCodex}>
+                {checkingCodex ? <Loader2 size={11} className="animate-spin" /> : null}
+                {checkingCodex ? "Checking" : "Check"}
+              </Btn>
+              <Btn type="button" onClick={openCodexConnection} disabled={!isTauri()}>
+                {status.state === "ready" ? <RefreshCw size={11} /> : <LogIn size={11} />}
+                {connectionActionLabel}
+              </Btn>
+            </div>
+            {codexCheckFeedback ? (
+              <div className="min-w-0 truncate font-mono text-[10.5px] text-ink-mute" title={codexCheckFeedback}>
+                {codexCheckFeedback}
+              </div>
+            ) : null}
+          </div>
+
           <Btn
             type="button"
             onClick={() => {
@@ -341,7 +473,7 @@ Do not draft repo context files, AGENTS.md, or instructions to write into the li
 
         <label className="flex items-start gap-2 text-[12px] text-ink-faint mb-3 leading-[1.45]">
           <input type="checkbox" checked={ack} onChange={(event) => setAck(event.target.checked)} className="mt-0.5" />
-          Send my prompt and selected project context to Codex/OpenAI using my local Codex account. Waymark will only write files after I review and save drafts.
+          Send my prompt and selected project context to OpenAI through my local Codex connection using the {model === "latest" ? "latest" : model.toUpperCase()} model and {reasoningEffort} reasoning. Waymark will only write files after I review and save drafts.
         </label>
 
         {mode === "capture" ? (
@@ -411,13 +543,90 @@ Do not draft repo context files, AGENTS.md, or instructions to write into the li
   );
 }
 
-function StatusPill({ status, route }: { status: CodexStatus; route: CodexRoute }) {
+function AssistantSelect({
+  label,
+  value,
+  onChange,
+  children,
+  className,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <label className={cx("min-w-0", className)}>
+      <span className="mb-1 block text-[10px] uppercase tracking-[0.09em] text-ink-mute font-semibold">
+        {label}
+      </span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full bg-surface border border-line-soft rounded-[4px] h-7 px-2 text-[12px] text-ink-soft"
+      >
+        {children}
+      </select>
+    </label>
+  );
+}
+
+function SettingGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="grid gap-1.5 mb-2 last:mb-0">
+      <div className="text-[10px] uppercase tracking-[0.09em] text-ink-mute font-semibold">{label}</div>
+      {children}
+    </div>
+  );
+}
+
+function SettingChoice({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cx(
+        "h-7 rounded-[4px] border px-2 text-[11.5px] text-center min-w-0",
+        active
+          ? "border-accent-deep bg-accent text-accent-ink font-semibold"
+          : "border-line-soft bg-surface-input-2 text-ink-faint hover:text-ink hover:bg-surface-4",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function modelLabel(model: AssistantModelChoice) {
+  if (model === "latest") return "Latest";
+  if (model === "gpt-5.5") return "GPT-5.5";
+  if (model === "gpt-5.4") return "GPT-5.4";
+  return "GPT-5.4 Mini";
+}
+
+function reasoningLabel(reasoning: AssistantReasoningEffort) {
+  if (reasoning === "xhigh") return "XHigh";
+  return reasoning[0].toUpperCase() + reasoning.slice(1);
+}
+
+function connectionStatusLabel(state: CodexStatus["state"]) {
+  if (state === "ready") return "Connected";
+  if (state === "needsLogin") return "Login needed";
+  if (state === "running") return "Checking";
+  if (state === "errored") return "Connection error";
+  return "Not connected";
+}
+
+function StatusPill({ status, route, compact = false }: { status: CodexStatus; route: CodexRoute; compact?: boolean }) {
   const color = status.state === "ready" ? "text-lane-done" : status.state === "needsLogin" ? "text-warn" : "text-ink-mute";
   return (
     <div className="text-right">
-      <div className={cx("font-mono text-[11px]", color)}>{status.state}</div>
+      <div className={cx("font-mono text-[11px]", color)}>{connectionStatusLabel(status.state)}</div>
       <div className="font-mono text-[10.5px] text-ink-faint">{route}</div>
-      <div className="text-[10.5px] text-ink-mute max-w-[280px] truncate" title={status.detail}>{status.detail}</div>
+      {compact ? null : (
+        <div className="text-[10.5px] text-ink-mute max-w-[280px] truncate" title={status.detail}>{status.detail}</div>
+      )}
     </div>
   );
 }
@@ -452,7 +661,7 @@ function ModeButton({ active, onClick, title, children }: { active: boolean; onC
     <button
       onClick={onClick}
       title={title}
-      className={cx("h-7 px-2.5 rounded-[4px] border text-[12px]", active ? "bg-accent text-accent-ink border-accent-deep font-semibold" : "bg-surface-2 text-ink-faint border-line-soft hover:text-ink")}
+      className={cx("h-7 px-2 rounded-[4px] border text-[12px] inline-flex items-center justify-center min-w-0", active ? "bg-accent text-accent-ink border-accent-deep font-semibold" : "bg-transparent text-ink-faint border-transparent hover:text-ink")}
     >
       {children}
     </button>

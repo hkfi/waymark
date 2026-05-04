@@ -31,19 +31,21 @@ The intended loop:
 1. Capture an idea or decision in Waymark.
 2. Convert or link it to a local ticket.
 3. Fill in summary and acceptance criteria.
-4. Link relevant files, decisions, thread references, and repo links.
+4. Link relevant files, decisions, thread references, and typed Context records.
 5. Generate a handoff prompt.
 6. Paste the prompt into Codex/Claude.
 7. Save the resulting thread reference and summary back into Waymark.
 
 ## Codex-Backed Assistant Loop
 
-The Assistant panel is an explicitly promoted AI surface for project-memory brainstorming. It uses the user's local Codex installation and Codex auth; Waymark does not read or store Codex credentials.
+The Assistant drawer is an explicitly promoted AI surface for project-memory brainstorming. It is available from every cockpit view and uses the selected project plus current ticket, thread, note, or handoff bundle as context after the user confirms the Codex notice. It uses the user's local Codex installation and Codex auth; Waymark does not read or store Codex credentials.
+
+The Assistant connection panel should separate connection state from connection actions. When local auth is ready, the UI should read as connected and offer a switch-account action rather than implying the user still needs to connect. Codex and ChatGPT should not appear as separate account choices here; Waymark uses the local Codex runtime as the OpenAI account connection. The panel exposes route, model, and reasoning controls; the default is `Latest` model with `High` reasoning. `Latest` means Waymark does not pin a model override and lets the local Codex runtime use its current latest/default model.
 
 The intended loop:
 
-1. User opens a project and selects Assistant.
-2. Waymark shows Codex availability and asks for confirmation before sending selected project context and the user's prompt.
+1. User opens a project and opens Assistant from the header, right drawer, or shortcut.
+2. Waymark shows Codex availability, route, model, and reasoning settings, then asks for confirmation before sending selected project context and the user's prompt.
 3. User brainstorms, asks Codex to structure the prompt, or pastes external Codex output for local parsing.
 4. Codex returns streamed assistant text through a local app-server thread, or Waymark falls back to one-shot CLI execution.
 5. Waymark validates draft IDs against the current project and turns invalid references into warnings.
@@ -54,6 +56,7 @@ Assistant outputs should:
 
 - propose project-memory records, not directly edit files
 - use an ephemeral read-only Codex thread with approval policy set to never
+- apply the selected model and reasoning settings to both app-server and CLI routes
 - keep tickets, ideas, decisions, and threads small enough to review
 - save thread summaries under `ai/thread-summaries/` only when the user accepts them
 - prefer concise summaries over full transcript persistence
@@ -103,6 +106,7 @@ Generated handoffs should include:
 - acceptance criteria
 - selected repo and file context
 - selected decisions and AI thread references
+- handoff-eligible Context records from `links.yaml`
 - scoped implementation instructions
 - expected verification and completion summary
 
@@ -110,6 +114,7 @@ Generated handoffs should not:
 
 - include secrets
 - include entire repositories by default
+- include service, domain, dashboard, or admin links unless they are explicitly marked for handoff
 - assume the agent can access private AI threads
 - ask the agent to perform unrelated refactors
 - silently update roadmap or decisions without user review

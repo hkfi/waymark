@@ -32,9 +32,11 @@ export interface ProjectConfig {
 export interface LinkRecord {
   id: string;
   label: string;
-  url: string;
-  type: "repo" | "deploy" | "dashboard" | "doc" | "design" | "other";
+  url?: string;
+  path?: string;
+  type: "repo" | "file" | "deploy" | "dashboard" | "doc" | "design" | "service" | "domain" | "other";
   environment?: "production" | "staging" | "preview" | "local" | "other";
+  include_in_handoff?: boolean;
 }
 
 export interface Ticket {

@@ -29,6 +29,7 @@ Canonical data includes:
 - ideas
 - decisions
 - AI thread references
+- typed project context records for repos, files, docs, deploys, dashboards, services, domains, design links, and other resources
 - generated handoff prompts
 
 Non-canonical data may eventually include:
@@ -50,8 +51,8 @@ Do not add SQLite as canonical storage.
 - `src/app/model.ts`: cockpit UI types, constants, and pure helpers shared by views.
 - `src/components/primitives.tsx`: reusable cockpit controls such as buttons, cards, chips, table rows, and notices.
 - `src/components/shell.tsx`: workspace toolbar, sidebar navigation, main header, and resizable shell chrome.
-- `src/components/views.tsx`: main cockpit content views for overview, queue, decisions, threads, files, inbox, and activity.
-- `src/components/inspector.tsx`: right-side ticket, handoff, thread, and note inspector panels.
+- `src/components/views.tsx`: main cockpit content views for overview, tickets, memory, context, and activity.
+- `src/components/inspector.tsx`: right-side ticket, handoff, assistant, thread, and note inspector panels.
 - `src/components/modals.tsx`: explicit user-write workflows for workspace/project creation, capture, ticket editing, and file/link attachment.
 - `src/components/assistant.tsx`: optional Codex-backed project-memory assistant with confirmation, draft review, and explicit accepted writes.
 - `src/assistant.ts`: structured draft schema, Codex prompt construction, and client-side draft validation.
@@ -84,6 +85,30 @@ projects/
 
 The repo also includes `projects/waymark/`, a self-project memory folder that lets Waymark open and manage its own roadmap.
 
+`links.yaml` is the preferred typed Context registry. `project.yaml` may still contain a legacy `links` map for compatibility, but new app-created resources should be written to `links.yaml` as readable records:
+
+```yaml
+version: 1
+links:
+  - id: production
+    label: Production app
+    type: deploy
+    url: https://example.com
+    environment: production
+    include_in_handoff: true
+  - id: domain-registrar
+    label: Namecheap
+    type: domain
+    url: https://ap.www.namecheap.com/
+    include_in_handoff: false
+  - id: architecture
+    label: Architecture
+    type: file
+    path: ARCHITECTURE.md
+```
+
+Context `type` values are `repo`, `file`, `deploy`, `dashboard`, `doc`, `design`, `service`, `domain`, and `other`. A record must have `url` or `path`. When `include_in_handoff` is omitted, repos, files, docs, deploys, and design links are included by default; services, domains, dashboards, and other resources are not.
+
 ## Write Model
 
 All writes must be explicit user actions:
@@ -91,6 +116,7 @@ All writes must be explicit user actions:
 - create/update tickets
 - create ideas or decisions
 - create AI thread references
+- create typed context records in `links.yaml`
 - create a sample workspace
 - save generated prompts
 
@@ -107,12 +133,13 @@ Prompt generation should:
 - include project summary and current focus
 - include acceptance criteria
 - include selected repo, file, decision, thread, and link context
+- include only handoff-eligible typed context records from `links.yaml`; service, domain, dashboard, and other admin links stay out unless explicitly marked
 - avoid dumping entire repos into prompts
 - keep instructions scoped and implementation-oriented
 
 ## Codex Assistant Model
 
-The Codex-backed Assistant is an explicitly promoted optional surface. It detects the user's local Codex install, relies on Codex's own local auth, starts an ephemeral read-only app-server thread, and sends project context only after the user confirms the session notice.
+The Codex-backed Assistant is an explicitly promoted optional right-drawer surface available from every cockpit view. It detects the user's local Codex install, relies on Codex's own local auth, starts an ephemeral read-only app-server thread, and sends project plus current selection context only after the user confirms the session notice.
 
 The assistant should:
 

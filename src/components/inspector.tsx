@@ -4,6 +4,7 @@ import { openPath } from "../tauri";
 import type { NoteRecord, ThreadRecord, Ticket, TicketStatus, WaymarkProject, WorkspaceData } from "../types";
 import { buildPrompt } from "../workspace";
 import { activeLane, projectFile, resolveProjectPath, tokenEstimate, type InspectorMode } from "../app/model";
+import { AssistantView } from "./assistant";
 import { Btn, Card, Cell, CommandShortcutBadge, DataRow, EmptyRow, StatusChip, cx } from "./primitives";
 
 export function Inspector({
@@ -18,6 +19,7 @@ export function Inspector({
   onSendHandoff,
   onStatus,
   onEditTicket,
+  onSaved,
 }: {
   mode: InspectorMode;
   onMode: (value: InspectorMode) => void;
@@ -30,6 +32,7 @@ export function Inspector({
   onSendHandoff: () => void;
   onStatus: (ticket: Ticket, status: TicketStatus) => void;
   onEditTicket: (ticket: Ticket) => void;
+  onSaved: () => Promise<void>;
 }) {
   const bundleSize = multi.length;
 
@@ -40,10 +43,13 @@ export function Inspector({
           Ticket
         </InspectorTab>
         <InspectorTab active={mode === "prompt"} onClick={() => onMode("prompt")} icon={Sparkles}>
-          Handoff
+          Prompt
           {bundleSize > 0 ? (
             <span className="font-mono text-[9.5px] px-1 rounded-[3px] bg-accent text-accent-ink leading-[14px]">{bundleSize}</span>
           ) : null}
+        </InspectorTab>
+        <InspectorTab active={mode === "assistant"} onClick={() => onMode("assistant")} icon={Sparkles}>
+          AI
         </InspectorTab>
         <InspectorTab active={mode === "thread"} onClick={() => onMode("thread")} icon={MessageSquareText}>
           Ref
@@ -84,6 +90,14 @@ export function Inspector({
           workspace={workspace}
           onSendHandoff={onSendHandoff}
         />
+      ) : mode === "assistant" ? (
+        <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3">
+          <AssistantView
+            project={project}
+            selection={{ ticket, thread, note, bundle: multi }}
+            onSaved={onSaved}
+          />
+        </div>
       ) : mode === "thread" ? (
         <InspectorThread project={project} ticket={ticket} selectedThread={thread} />
       ) : (
@@ -108,7 +122,7 @@ function InspectorTab({
     <button
       onClick={onClick}
       className={cx(
-        "inline-flex items-center gap-1.5 h-[26px] px-2 rounded-[3px] text-[11.5px] whitespace-nowrap shrink-0 cursor-pointer",
+        "inline-flex items-center gap-1 h-[26px] px-1.5 rounded-[3px] text-[11.5px] whitespace-nowrap shrink-0 cursor-pointer",
         active ? "bg-surface-4 text-ink" : "text-ink-faint hover:bg-surface-3 hover:text-ink",
       )}
     >

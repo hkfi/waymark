@@ -48,6 +48,8 @@ export interface NativeCodexRunRequest {
   prompt: string;
   schema?: string | null;
   timeoutMs?: number | null;
+  model?: string | null;
+  modelReasoningEffort?: string | null;
 }
 
 export interface NativeCodexRunResult {
@@ -74,8 +76,8 @@ export async function codexRunStructured(request: NativeCodexRunRequest) {
   return invoke<NativeCodexRunResult>("codex_run_structured", { request });
 }
 
-export async function codexAppSessionStart(cwd: string) {
-  return invoke<NativeCodexAppSession>("codex_app_session_start", { cwd });
+export async function codexAppSessionStart(cwd: string, model?: string | null, modelReasoningEffort?: string | null) {
+  return invoke<NativeCodexAppSession>("codex_app_session_start", { cwd, model, modelReasoningEffort });
 }
 
 export async function codexAppTurnSend(sessionId: string, request: NativeCodexRunRequest) {

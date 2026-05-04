@@ -2,7 +2,7 @@
 
 Waymark is a local-first project cockpit for AI-assisted software work.
 
-It keeps project memory in readable Markdown/YAML files, then gives you a desktop UI for scanning project state, tracking local tickets, capturing ideas and decisions, referencing AI threads, and generating Codex/Claude-ready handoff prompts.
+It keeps project memory in readable Markdown/YAML files, then gives you a desktop UI for scanning project state, tracking local tickets, capturing memory, managing project context, referencing AI threads, and generating Codex/Claude-ready handoff prompts.
 
 ## MVP Shape
 
@@ -12,7 +12,7 @@ It keeps project memory in readable Markdown/YAML files, then gives you a deskto
 - No SQLite in the MVP.
 - No AI API calls in the MVP.
 - One Waymark project can reference many repos.
-- Controlled writes for tickets, notes, thread records, and generated prompts.
+- Controlled writes for tickets, notes, thread records, typed Context records, and generated prompts.
 
 ## Run Locally
 
@@ -66,7 +66,7 @@ On first launch, the app can create a sample workspace at:
 ~/Documents/Waymark Sample Workspace
 ```
 
-Use the sample to see Waymark's cockpit with projects, tickets, decisions, ideas, and AI thread references before creating a real workspace.
+Use the sample to see Waymark's cockpit with projects, tickets, Memory records, Context resources, and AI thread references before creating a real workspace.
 
 This repository is also a Waymark-readable workspace. Open the repo root:
 
@@ -74,7 +74,7 @@ This repository is also a Waymark-readable workspace. Open the repo root:
 /Users/hirokifuruichi/code/waymark
 ```
 
-Waymark will read `waymark.yaml` and `projects/waymark/` so the app can be used to manage its own local tickets, decisions, ideas, and AI handoffs.
+Waymark will read `waymark.yaml` and `projects/waymark/` so the app can be used to manage its own local tickets, Memory records, Context resources, and AI handoffs.
 
 ## AI Agent Context
 
@@ -94,7 +94,7 @@ Start with:
 
 1. Open, create, or sample a Waymark workspace.
 2. Review projects in the workspace dashboard.
-3. Capture project tickets, ideas, decisions, and AI thread references.
+3. Capture project tickets, Memory records, Context resources, and AI thread references.
 4. Select a local ticket.
 5. Review readiness warnings and context selection.
 6. Generate an agent handoff prompt.

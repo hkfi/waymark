@@ -7,9 +7,8 @@ import type {
   WorkspaceData,
 } from "../types";
 
-export type NavId = "home" | "assistant" | "queue" | "decisions" | "threads" | "ideas" | "files" | "inbox";
-export type MainTab = "overview" | "tickets" | "decisions" | "threads" | "files";
-export type InspectorMode = "ticket" | "prompt" | "thread" | "note";
+export type NavId = "home" | "tickets" | "memory" | "context";
+export type InspectorMode = "ticket" | "prompt" | "assistant" | "thread" | "note";
 export type Lane = "now" | "next" | "later" | "blocked" | "done";
 export type CaptureKind = "ticket" | "idea" | "decision" | "thread";
 export type FileModalMode = "file" | "link";
@@ -99,20 +98,6 @@ export function ticketHasFlag(ticket: Ticket, kind: "ac" | "decision" | "thread"
   if (kind === "ac") return (ticket.acceptance_criteria?.length ?? 0) > 0;
   if (kind === "decision") return (ticket.linked_decisions?.length ?? 0) > 0;
   return (ticket.linked_threads?.length ?? 0) > 0;
-}
-export function navToTab(id: NavId): MainTab {
-  if (id === "queue") return "tickets";
-  if (id === "decisions") return "decisions";
-  if (id === "threads") return "threads";
-  if (id === "files") return "files";
-  return id === "home" ? "overview" : "overview";
-}
-export function tabToNav(id: MainTab): NavId {
-  if (id === "tickets") return "queue";
-  if (id === "decisions") return "decisions";
-  if (id === "threads") return "threads";
-  if (id === "files") return "files";
-  return "home";
 }
 export function matchesSearch(values: Array<string | undefined | null>, search: string) {
   const needle = search.trim().toLowerCase();

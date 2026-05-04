@@ -59,7 +59,9 @@ tickets:
     summary: Add an optional assistant that uses the user's local Codex auth for brainstorming and review-gated project-memory drafts.
     acceptance_criteria:
       - Waymark can detect a local Codex binary without reading or storing Codex tokens.
-      - The Assistant panel shows connection state, route, project context notice, and disabled copy in browser/demo mode.
+      - The Assistant drawer shows connected state, OpenAI account switching through Codex, route, model, reasoning, project context notice, and disabled copy in browser/demo mode.
+      - Codex and ChatGPT are not presented as separate account choices because Waymark uses the local Codex runtime as the shared OpenAI connection.
+      - The default assistant settings are Latest model and High reasoning, with explicit controls to pin another supported model or effort.
       - App-server mode starts an ephemeral read-only Codex thread and streams assistant deltas into the conversation.
       - CLI execution remains available as a fallback when app-server start or turn execution fails.
       - Brainstorm, structure, and pasted-output capture flow into the same draft review model.
@@ -160,5 +162,29 @@ tickets:
       - .agent/rules/mvp-boundaries.md
       - AGENTS.md
     linked_decisions: []
+    linked_threads: []
+    generated_prompts: []
+  - id: simplify-cockpit-ia
+    title: Simplify cockpit IA
+    status: done
+    priority: high
+    summary: Collapse the cockpit to Overview, Tickets, Memory, and Context; move Assistant into the right drawer; and make typed Context records the durable home for files and service links.
+    acceptance_criteria:
+      - Sidebar navigation has Overview, Tickets, Memory, and Context only.
+      - Assistant is available from the header and right drawer instead of a main navigation page.
+      - Overview shows a compact Now/Next preview, warnings, key Context, and recent Memory instead of duplicating the full ticket board.
+      - Memory combines ideas, decisions, and thread references behind a segmented filter.
+      - Context displays typed repos, files, docs, deploys, dashboards, services, domains, design links, and other resources from links.yaml.
+      - Generated handoff prompts include only handoff-eligible Context records.
+      - Documentation records the simplified IA and typed links.yaml Context convention.
+    linked_files:
+      - src/components/shell.tsx
+      - src/components/views.tsx
+      - src/components/inspector.tsx
+      - src/workspace.ts
+      - ARCHITECTURE.md
+      - docs/keyboard-shortcuts.md
+    linked_decisions:
+      - simplified-cockpit-ia
     linked_threads: []
     generated_prompts: []

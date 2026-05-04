@@ -21,13 +21,10 @@ Holding `Cmd`/`Ctrl` reveals shortcut badges on commandable cockpit navigation i
 | Shortcut | Action |
 | --- | --- |
 | `Cmd/Ctrl+1` | Overview |
-| `Cmd/Ctrl+2` | Assistant |
-| `Cmd/Ctrl+3` | Queue |
-| `Cmd/Ctrl+4` | Decisions |
-| `Cmd/Ctrl+5` | Threads |
-| `Cmd/Ctrl+6` | Ideas |
-| `Cmd/Ctrl+7` | Files |
-| `Cmd/Ctrl+8` | Inbox |
+| `Cmd/Ctrl+2` | Tickets |
+| `Cmd/Ctrl+3` | Memory |
+| `Cmd/Ctrl+4` | Context |
+| `Cmd/Ctrl+Shift+A` | Open Assistant in the right drawer |
 | `Cmd/Ctrl+[` | Previous cockpit section |
 | `Cmd/Ctrl+]` | Next cockpit section |
 

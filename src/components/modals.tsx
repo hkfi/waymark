@@ -547,6 +547,20 @@ function titleFromPath(path: string) {
     .replace(/\b\w/g, (letter: string) => letter.toUpperCase());
 }
 
+function fileNameFromPath(path: string) {
+  const clean = trimPath(path);
+  const parts = clean.split("/").filter(Boolean);
+  return parts[parts.length - 1] ?? clean;
+}
+
+function compactPath(path: string) {
+  const clean = trimPath(path);
+  const parts = clean.split("/").filter(Boolean);
+  if (parts.length <= 3) return clean;
+  const prefix = clean.startsWith("/") ? "/" : clean.startsWith("~/") ? "~/" : "";
+  return `${prefix}…/${parts.slice(-3).join("/")}`;
+}
+
 function uniqueRepoId(baseId: string, repos: RepoRef[]) {
   const base = recordId(baseId) || "repo";
   const existing = new Set(repos.map((repo) => repo.id));
@@ -577,6 +591,15 @@ function toggleLine(value: string, id: string, onChange: (next: string) => void)
   onChange(next.join("\n"));
 }
 
+function uniquePickItems(items: CapturePickItem[]) {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+}
+
 function CapturePickList({
   label,
   empty,
@@ -598,10 +621,13 @@ function CapturePickList({
           <div className="flex flex-col gap-1">
             {items.map((item) => {
               const selected = isLineSelected(value, item.id);
+              const fullLabel = [item.label, item.detail, item.id].filter(Boolean).join("\n");
               return (
                 <button
                   key={item.id}
                   type="button"
+                  title={fullLabel}
+                  aria-label={`${selected ? "Remove" : "Add"} ${item.label}${item.detail ? `, ${item.detail}` : ""}`}
                   onClick={() => toggleLine(value, item.id, onChange)}
                   className={cx(
                     "grid grid-cols-[14px_1fr] gap-1.5 rounded-[3px] px-1.5 py-1 text-left text-[11.5px]",
@@ -616,9 +642,9 @@ function CapturePickList({
                   >
                     {selected ? <Check size={10} /> : null}
                   </span>
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium">{item.label}</span>
-                    {item.detail ? <span className="block truncate text-[10.5px] opacity-75">{item.detail}</span> : null}
+                  <span className="min-w-0" title={fullLabel}>
+                    <span className="block truncate font-medium" title={item.label}>{item.label}</span>
+                    {item.detail ? <span className="block truncate text-[10.5px] opacity-75" title={item.detail}>{item.detail}</span> : null}
                   </span>
                 </button>
               );
@@ -721,43 +747,46 @@ export function TicketEditModal({
 
 export function FileLinkModal({
   mode,
-  project,
-  selectedTicket,
   onClose,
-  onAddFile,
   onAddLink,
 }: {
   mode: FileModalMode;
-  project: WaymarkProject;
-  selectedTicket: Ticket | null;
   onClose: () => void;
-  onAddFile: (ticketId: string, path: string) => Promise<void>;
   onAddLink: (link: LinkRecord) => Promise<void>;
 }) {
-  const [ticketId, setTicketId] = useState(selectedTicket?.id ?? project.tickets[0]?.id ?? "");
   const [path, setPath] = useState("");
   const [label, setLabel] = useState("");
   const [url, setUrl] = useState("");
-  const [type, setType] = useState<LinkRecord["type"]>("doc");
-  const [environment, setEnvironment] = useState<LinkRecord["environment"]>("other");
+  const [type, setType] = useState<LinkRecord["type"]>(mode === "file" ? "file" : "service");
+  const [environment, setEnvironment] = useState<LinkRecord["environment"]>(mode === "file" ? "local" : "other");
+  const [includeInHandoff, setIncludeInHandoff] = useState(contextTypeDefault(mode === "file" ? "file" : "service"));
   const [busy, setBusy] = useState(false);
 
   return (
-    <ModalFrame title={mode === "file" ? "Add linked file" : "Add project link"} onClose={onClose}>
+    <ModalFrame title={mode === "file" ? "Add context file" : "Add context link"} onClose={onClose}>
       <form
         onKeyDown={submitOnCommandEnter}
         onSubmit={async (event) => {
           event.preventDefault();
           setBusy(true);
           if (mode === "file") {
-            await onAddFile(ticketId, path);
+            await onAddLink({
+              id: recordId(label || path),
+              label: label.trim() || path.trim(),
+              path: path.trim(),
+              type: "file",
+              environment: "local",
+              include_in_handoff: includeInHandoff,
+            });
           } else {
             await onAddLink({
               id: recordId(label || url),
               label: label.trim() || url.trim(),
-              url: url.trim(),
+              url: url.trim() || undefined,
+              path: path.trim() || undefined,
               type,
               environment,
+              include_in_handoff: includeInHandoff,
             });
           }
           setBusy(false);
@@ -766,32 +795,40 @@ export function FileLinkModal({
       >
         {mode === "file" ? (
           <>
-            <FieldLabel>Ticket</FieldLabel>
-            <select value={ticketId} onChange={(event) => setTicketId(event.target.value)} className={inputClass}>
-              {project.tickets.map((ticket) => (
-                <option key={ticket.id} value={ticket.id}>{ticket.title}</option>
-              ))}
-            </select>
+            <FieldLabel>Label</FieldLabel>
+            <input value={label} onChange={(event) => setLabel(event.target.value)} placeholder="Architecture, release policy, env template..." className={inputClass} autoFocus />
             <FieldLabel>Path</FieldLabel>
             <input
               value={path}
               onChange={(event) => setPath(event.target.value)}
               placeholder="src/App.tsx or ~/code/project/file.md"
               className={inputClass}
-              autoFocus
             />
           </>
         ) : (
           <>
             <FieldLabel>Label</FieldLabel>
-            <input value={label} onChange={(event) => setLabel(event.target.value)} placeholder="Design, production, docs..." className={inputClass} autoFocus />
+            <input value={label} onChange={(event) => setLabel(event.target.value)} placeholder="Vercel, Namecheap, production, docs..." className={inputClass} autoFocus />
             <FieldLabel>URL</FieldLabel>
             <input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://..." className={inputClass} />
+            <FieldLabel>Path</FieldLabel>
+            <input value={path} onChange={(event) => setPath(event.target.value)} placeholder="Optional local path" className={inputClass} />
             <div className="grid grid-cols-2 gap-2">
-              <select value={type} onChange={(event) => setType(event.target.value as LinkRecord["type"])} className={inputClass}>
+              <select
+                value={type}
+                onChange={(event) => {
+                  const nextType = event.target.value as LinkRecord["type"];
+                  setType(nextType);
+                  setIncludeInHandoff(contextTypeDefault(nextType));
+                }}
+                className={inputClass}
+              >
+                <option value="service">Service</option>
+                <option value="domain">Domain</option>
                 <option value="doc">Doc</option>
                 <option value="design">Design</option>
                 <option value="repo">Repo</option>
+                <option value="file">File</option>
                 <option value="deploy">Deploy</option>
                 <option value="dashboard">Dashboard</option>
                 <option value="other">Other</option>
@@ -806,19 +843,32 @@ export function FileLinkModal({
             </div>
           </>
         )}
+        <label className="flex items-start gap-2 text-[12px] text-ink-faint leading-[1.45]">
+          <input
+            type="checkbox"
+            checked={includeInHandoff}
+            onChange={(event) => setIncludeInHandoff(event.target.checked)}
+            className="mt-0.5"
+          />
+          Include this context in generated handoff prompts.
+        </label>
         <div className="flex gap-2 justify-end">
           <Btn type="button" variant="ghost" onClick={onClose}>Cancel</Btn>
           <Btn
             type="submit"
             variant="primary"
-            disabled={busy || (mode === "file" ? !ticketId || !path.trim() : !url.trim())}
+            disabled={busy || (mode === "file" ? !path.trim() : (!url.trim() && !path.trim()))}
           >
-            <Plus size={11} /> Add {mode}
+            <Plus size={11} /> Add {mode === "file" ? "file" : "context"}
           </Btn>
         </div>
       </form>
     </ModalFrame>
   );
+}
+
+function contextTypeDefault(type: LinkRecord["type"]) {
+  return ["repo", "file", "doc", "deploy", "design"].includes(type);
 }
 
 function ModalFrame({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
@@ -860,16 +910,32 @@ export function CaptureModal({
   const [summaryFile, setSummaryFile] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [busy, setBusy] = useState(false);
-  const fileChoices = Array.from(
-    new Set([
-      ...project.tickets.flatMap((ticket) => ticket.linked_files ?? []),
-      ...project.decisions.map((decision) => decision.path),
-      ...project.ideas.map((idea) => idea.path),
-      ...(project.config.repos?.map((repo) => repo.path).filter((path): path is string => Boolean(path)) ?? []),
-    ]),
-  )
-    .filter(Boolean)
-    .map((path) => ({ id: path, label: path }));
+  const fileChoices = uniquePickItems([
+    ...project.tickets.flatMap((ticket) =>
+      (ticket.linked_files ?? []).map((path) => ({
+        id: path,
+        label: fileNameFromPath(path),
+        detail: `${ticket.id} · ${compactPath(path)}`,
+      })),
+    ),
+    ...project.decisions.map((decision) => ({
+      id: decision.path,
+      label: decision.title,
+      detail: `decision · ${compactPath(decision.path)}`,
+    })),
+    ...project.ideas.map((idea) => ({
+      id: idea.path,
+      label: idea.title,
+      detail: `idea · ${compactPath(idea.path)}`,
+    })),
+    ...(project.config.repos ?? [])
+      .filter((repo) => Boolean(repo.path))
+      .map((repo) => ({
+        id: repo.path as string,
+        label: repo.name,
+        detail: `repo · ${compactPath(repo.path as string)}`,
+      })),
+  ]);
   const decisionChoices = project.decisions.map((decision) => ({
     id: decision.id,
     label: decision.title,

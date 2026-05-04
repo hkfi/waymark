@@ -2,6 +2,31 @@ version: 1
 links:
   - id: local-repo
     label: Local repo
-    url: file:///Users/hirokifuruichi/code/waymark
+    path: /Users/hirokifuruichi/code/waymark
     type: repo
     environment: local
+    include_in_handoff: true
+  - id: architecture
+    label: Architecture
+    path: ARCHITECTURE.md
+    type: file
+    environment: local
+    include_in_handoff: true
+  - id: shortcut-docs
+    label: Keyboard shortcuts
+    path: docs/keyboard-shortcuts.md
+    type: doc
+    environment: local
+    include_in_handoff: true
+  - id: github-releases
+    label: GitHub Releases updater
+    url: https://github.com/
+    type: service
+    environment: production
+    include_in_handoff: false
+  - id: waymark-domain
+    label: Future Waymark domain
+    url: https://www.namecheap.com/
+    type: domain
+    environment: production
+    include_in_handoff: false

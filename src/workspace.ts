@@ -71,9 +71,13 @@ const threadSchema = z.object({
 const linkSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1),
-  url: z.string().url(),
-  type: z.enum(["repo", "deploy", "dashboard", "doc", "design", "other"]),
+  url: z.string().url().optional(),
+  path: z.string().min(1).optional(),
+  type: z.enum(["repo", "file", "deploy", "dashboard", "doc", "design", "service", "domain", "other"]),
   environment: z.enum(["production", "staging", "preview", "local", "other"]).optional(),
+  include_in_handoff: z.boolean().optional(),
+}).refine((link) => Boolean(link.url || link.path), {
+  message: "Link records need a url or path.",
 });
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -212,7 +216,10 @@ function validateProject(project: WaymarkProject) {
   if (!config.repos?.length) warnings.push("Project has no linked repos.");
   if (!Object.keys(config.links ?? {}).length && !project.links.length) warnings.push("Project has no important links.");
   if (!project.tickets.length) warnings.push("Project has no local tickets.");
-  if (["mvp", "alpha", "beta", "production"].includes(config.stage) && !config.links?.production) {
+  const hasProductionContext = Boolean(config.links?.production) || project.links.some((link) =>
+    link.environment === "production" || link.id === "production" || link.type === "deploy",
+  );
+  if (["mvp", "alpha", "beta", "production"].includes(config.stage) && !hasProductionContext) {
     warnings.push("Project has no production link.");
   }
 
@@ -396,6 +403,7 @@ export async function createSampleWorkspace(rootPath: string) {
           url: "https://vercel.com/example/glossa",
           type: "deploy",
           environment: "production",
+          include_in_handoff: true,
         },
         {
           id: "sentry",
@@ -403,6 +411,23 @@ export async function createSampleWorkspace(rootPath: string) {
           url: "https://sentry.io/",
           type: "dashboard",
           environment: "production",
+          include_in_handoff: false,
+        },
+        {
+          id: "namecheap",
+          label: "Namecheap registrar",
+          url: "https://ap.www.namecheap.com/",
+          type: "domain",
+          environment: "production",
+          include_in_handoff: false,
+        },
+        {
+          id: "reading-spec",
+          label: "Daily reading spec",
+          path: "specs/daily-reading.md",
+          type: "file",
+          environment: "local",
+          include_in_handoff: true,
         },
       ],
     }),
@@ -590,6 +615,11 @@ export async function saveLinks(project: WaymarkProject, links: LinkRecord[]) {
   await writeTextFile(joinPath(project.rootPath, "links.yaml"), dumpYaml({ version: 1, links }));
 }
 
+export function shouldIncludeContextInHandoff(link: LinkRecord) {
+  if (typeof link.include_in_handoff === "boolean") return link.include_in_handoff;
+  return ["repo", "file", "doc", "deploy", "design"].includes(link.type);
+}
+
 export async function createNote(
   project: WaymarkProject,
   type: "idea" | "decision",
@@ -651,7 +681,9 @@ export function buildPrompt(project: WaymarkProject, ticket: Ticket, selectedCon
   const repos = project.config.repos ?? [];
   const links = [
     ...Object.entries(project.config.links ?? {}).map(([label, url]) => `${label}: ${url}`),
-    ...project.links.map((link) => `${link.label}: ${link.url}`),
+    ...project.links
+      .filter(shouldIncludeContextInHandoff)
+      .map((link) => `${link.label} (${link.type})${link.url ? `: ${link.url}` : ""}${link.path ? `: ${link.path}` : ""}`),
   ];
 
   const include = (key: string) => selectedContext.includes(key);
@@ -678,7 +710,7 @@ ${include("repos") ? `## Repositories\n\n${repos.length ? repos.map((repo) => `-
 ${include("files") ? `## Relevant Files\n\n${ticket.linked_files?.length ? ticket.linked_files.map((file) => `- ${file}`).join("\n") : "- No linked files were provided."}\n` : ""}
 ${include("decisions") ? `## Linked Decisions\n\n${linkedDecisions.length ? linkedDecisions.map((decision) => `### ${decision.title}\n\n${decision.body}`).join("\n\n") : "- No linked decisions."}\n` : ""}
 ${include("threads") ? `## AI Thread References\n\n${linkedThreads.length ? linkedThreads.map((thread) => `- ${thread.title} (${thread.provider}, ${thread.status})${thread.url ? `: ${thread.url}` : ""}${thread.summary_file ? `\n  - Summary: ${thread.summary_file}` : ""}`).join("\n") : "- No linked thread references."}\n` : ""}
-${include("links") ? `## Project Links\n\n${links.length ? links.map((link) => `- ${link}`).join("\n") : "- No important project links."}\n` : ""}
+${include("links") ? `## Project Context\n\n${links.length ? links.map((link) => `- ${link}`).join("\n") : "- No important project context."}\n` : ""}
 ## Instructions
 
 - Make the smallest reasonable change.
@@ -714,7 +746,40 @@ export function buildDemoWorkspace(): WorkspaceData {
       ],
       links: { production: "https://glossa.app", design: "https://figma.com/example" },
     },
-    links: [],
+    links: [
+      {
+        id: "vercel",
+        label: "Vercel production",
+        url: "https://vercel.com/example/glossa",
+        type: "deploy",
+        environment: "production",
+        include_in_handoff: true,
+      },
+      {
+        id: "namecheap",
+        label: "Namecheap registrar",
+        url: "https://ap.www.namecheap.com/",
+        type: "domain",
+        environment: "production",
+        include_in_handoff: false,
+      },
+      {
+        id: "reading-spec",
+        label: "Daily reading spec",
+        path: "specs/daily-reading.md",
+        type: "file",
+        environment: "local",
+        include_in_handoff: true,
+      },
+      {
+        id: "sentry",
+        label: "Sentry project",
+        url: "https://sentry.io/",
+        type: "service",
+        environment: "production",
+        include_in_handoff: false,
+      },
+    ],
     tickets: [
       {
         id: "daily-reading-mvp",

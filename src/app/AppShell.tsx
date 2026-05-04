@@ -146,8 +146,6 @@ function MainHeaderRegion() {
     <MainHeader
       project={selectedProject}
       workspace={workspace.data}
-      tab={navigation.tab}
-      onTab={navigation.setTab}
       selectedTicket={selection.selectedTicket}
       selectedCount={selection.multi.length}
       handoffDisabled={!selectedProject || (!selection.selectedTicket && selection.multi.length === 0)}
@@ -163,6 +161,7 @@ function MainHeaderRegion() {
         }
         modals.openCapture();
       }}
+      onOpenAssistant={() => selection.setInspectorMode("assistant")}
       onSendHandoff={actions.sendHandoff}
     />
   );
@@ -194,7 +193,6 @@ function MainContentRegion() {
       ) : (
         <CockpitContent
           nav={navigation.nav}
-          tab={navigation.tab}
           project={selectedProject}
           workspace={workspace.data}
           selectedTicketId={selection.selectedTicketId}
@@ -228,7 +226,6 @@ function MainContentRegion() {
             }
             modals.openRepoOnboarding();
           }}
-          onSaved={() => workspace.refresh()}
         />
       )}
     </div>
@@ -323,6 +320,7 @@ function InspectorRegion() {
       onSendHandoff={actions.sendHandoff}
       onStatus={actions.changeStatus}
       onEditTicket={selection.editTicket}
+      onSaved={() => workspace.refresh()}
     />
   );
 }
@@ -369,10 +367,7 @@ function ModalRegion() {
       {modals.fileModalMode && selectedProject ? (
         <FileLinkModal
           mode={modals.fileModalMode}
-          project={selectedProject}
-          selectedTicket={selection.selectedTicket}
           onClose={modals.closeFileModal}
-          onAddFile={actions.addFile}
           onAddLink={actions.addLink}
         />
       ) : null}

@@ -1,12 +1,11 @@
 import { useEffect, type RefObject } from "react";
 import { isTauri } from "../../tauri";
 import type { Ticket, TicketStatus, WaymarkProject } from "../../types";
-import { LANES_IN_QUEUE, type InspectorMode, type MainTab, type NavId } from "../model";
+import { LANES_IN_QUEUE, type InspectorMode, type NavId } from "../model";
 
 type KeyboardShortcutDeps = {
   project: WaymarkProject | null;
   nav: NavId;
-  tab: MainTab;
   setNav: (id: NavId) => void;
   selectedTicket: Ticket | null;
   selectTicket: (ticket: Ticket) => void;
@@ -36,13 +35,12 @@ type KeyboardShortcutDeps = {
   setNotice: (value: string | null) => void;
 };
 
-export const NAV_SHORTCUTS: NavId[] = ["home", "assistant", "queue", "decisions", "threads", "ideas", "files", "inbox"];
+export const NAV_SHORTCUTS: NavId[] = ["home", "tickets", "memory", "context"];
 const TICKET_ORDER: TicketStatus[] = [...LANES_IN_QUEUE, "done"];
 
 export function useKeyboardShortcuts({
   project,
   nav,
-  tab,
   setNav,
   selectedTicket,
   selectTicket,
@@ -147,9 +145,15 @@ export function useKeyboardShortcuts({
 
       if (typing || modalOpen || event.altKey) return;
 
-      if (command && /^[1-8]$/.test(key)) {
+      if (command && /^[1-4]$/.test(key)) {
         event.preventDefault();
         setNav(NAV_SHORTCUTS[Number(key) - 1]);
+        return;
+      }
+
+      if (command && event.shiftKey && key === "a") {
+        event.preventDefault();
+        setInspectorMode("assistant");
         return;
       }
 
@@ -219,7 +223,7 @@ export function useKeyboardShortcuts({
         return;
       }
 
-      const queueVisible = nav === "queue" || nav === "home" || tab === "tickets";
+      const queueVisible = nav === "tickets" || nav === "home";
       if (!queueVisible) return;
 
       if (event.key === "ArrowDown") {
@@ -272,7 +276,6 @@ export function useKeyboardShortcuts({
     setNav,
     setNotice,
     setSearch,
-    tab,
     toggleMulti,
   ]);
 }

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { DraftNote, DraftThread, DraftTicket, TicketStatus, WaymarkDraftSet, WaymarkProject } from "./types";
+import type { DraftNote, DraftThread, DraftTicket, NoteRecord, ThreadRecord, Ticket, TicketStatus, WaymarkDraftSet, WaymarkProject } from "./types";
 
 const ticketStatus = z.enum(["idea", "now", "next", "later", "blocked", "done"]);
 const priority = z.enum(["low", "medium", "high"]);
@@ -100,7 +100,19 @@ function draftNoteArraySchema() {
   };
 }
 
-export function buildAssistantPrompt(project: WaymarkProject, userPrompt: string, mode: "brainstorm" | "structure" | "capture") {
+export type AssistantContextSelection = {
+  ticket?: Ticket | null;
+  thread?: ThreadRecord | null;
+  note?: NoteRecord | null;
+  bundle?: string[];
+};
+
+export function buildAssistantPrompt(
+  project: WaymarkProject,
+  userPrompt: string,
+  mode: "brainstorm" | "structure" | "capture",
+  selection: AssistantContextSelection = {},
+) {
   const context = {
     project: {
       name: project.config.name,
@@ -133,6 +145,39 @@ export function buildAssistantPrompt(project: WaymarkProject, userPrompt: string
       provider: thread.provider,
       status: thread.status,
     })),
+    selection: {
+      ticket: selection.ticket
+        ? {
+            id: selection.ticket.id,
+            title: selection.ticket.title,
+            status: selection.ticket.status,
+            priority: selection.ticket.priority,
+            summary: selection.ticket.summary,
+            linked_files: selection.ticket.linked_files ?? [],
+            linked_decisions: selection.ticket.linked_decisions ?? [],
+            linked_threads: selection.ticket.linked_threads ?? [],
+          }
+        : null,
+      thread: selection.thread
+        ? {
+            id: selection.thread.id,
+            title: selection.thread.title,
+            provider: selection.thread.provider,
+            status: selection.thread.status,
+            summary_file: selection.thread.summary_file,
+          }
+        : null,
+      note: selection.note
+        ? {
+            id: selection.note.id,
+            type: selection.note.type,
+            title: selection.note.title,
+            status: selection.note.status,
+            linked_tickets: selection.note.linked_tickets,
+          }
+        : null,
+      handoff_bundle: selection.bundle ?? [],
+    },
   };
 
   if (mode === "brainstorm") {

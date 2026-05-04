@@ -93,7 +93,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useKeyboardShortcuts({
     project: workspaceState.selectedProject,
     nav: navigation.nav,
-    tab: navigation.tab,
     setNav: navigation.setNav,
     selectedTicket: selection.selectedTicket,
     selectTicket: selection.selectTicket,

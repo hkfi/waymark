@@ -1,7 +1,7 @@
-import { Bot, Download, FileText, FolderOpen, GitBranch, Inbox, LayoutGrid, Lightbulb, ListChecks, ListOrdered, MessageSquareText, Plus, RefreshCw, Search, Sliders, Sparkles, Triangle, type LucideIcon } from "lucide-react";
-import { useMemo, type ButtonHTMLAttributes, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
+import { Bot, Download, FileText, FolderOpen, GitBranch, LayoutGrid, ListChecks, ListOrdered, Plus, RefreshCw, Search, Sliders, Sparkles, Triangle, type LucideIcon } from "lucide-react";
+import { useMemo, type ButtonHTMLAttributes, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import type { AppUpdateStatus, Ticket, WaymarkProject, WorkspaceData } from "../types";
-import { projectColor, projectMark, projectStatusKind, type MainTab, type NavId } from "../app/model";
+import { projectColor, projectMark, projectStatusKind, type NavId } from "../app/model";
 import { NAV_SHORTCUTS } from "../app/hooks/useKeyboardShortcuts";
 import { Btn, CommandShortcutBadge, cx } from "./primitives";
 
@@ -181,13 +181,9 @@ export function Sidebar({
   const counts = useMemo(() => aggregateNavCounts(workspace), [workspace]);
   const navItems: { id: NavId; label: string; icon: LucideIcon; count?: number }[] = [
     { id: "home", label: "Overview", icon: LayoutGrid, count: workspace?.projects.length ?? 0 },
-    { id: "assistant", label: "Assistant", icon: Bot },
-    { id: "queue", label: "Queue", icon: ListChecks, count: counts.active },
-    { id: "decisions", label: "Decisions", icon: ListOrdered, count: counts.decisions },
-    { id: "threads", label: "Threads", icon: MessageSquareText, count: counts.threads },
-    { id: "ideas", label: "Ideas", icon: Lightbulb, count: counts.ideas },
-    { id: "files", label: "Files", icon: FileText, count: counts.files },
-    { id: "inbox", label: "Inbox", icon: Inbox, count: counts.warnings },
+    { id: "tickets", label: "Tickets", icon: ListChecks, count: counts.active },
+    { id: "memory", label: "Memory", icon: ListOrdered, count: counts.memory },
+    { id: "context", label: "Context", icon: FileText, count: counts.context },
   ];
 
   return (
@@ -451,26 +447,22 @@ function ProjectRow({
 }
 
 function aggregateNavCounts(workspace: WorkspaceData | null) {
-  if (!workspace) return { active: 0, decisions: 0, threads: 0, ideas: 0, files: 0, warnings: 0 };
+  if (!workspace) return { active: 0, memory: 0, context: 0, warnings: 0 };
   let active = 0;
-  let decisions = 0;
-  let threads = 0;
-  let ideas = 0;
-  let files = 0;
+  let memory = 0;
+  let context = 0;
   let warnings = workspace.warnings.length;
   for (const project of workspace.projects) {
     for (const ticket of project.tickets) {
       if (ticket.status === "now" || ticket.status === "next" || ticket.status === "blocked") active += 1;
-      files += ticket.linked_files?.length ?? 0;
+      context += ticket.linked_files?.length ?? 0;
     }
-    decisions += project.decisions.length;
-    threads += project.threads.length;
-    ideas += project.ideas.length;
-    files += (project.config.repos?.length ?? 0) + Object.keys(project.config.links ?? {}).length + project.links.length;
-    files += project.decisions.length + project.ideas.length;
+    memory += project.decisions.length + project.threads.length + project.ideas.length;
+    context += (project.config.repos?.length ?? 0) + Object.keys(project.config.links ?? {}).length + project.links.length;
+    context += project.decisions.length + project.ideas.length;
     warnings += project.warnings.length;
   }
-  return { active, decisions, threads, ideas, files, warnings };
+  return { active, memory, context, warnings };
 }
 
 /* ------------------------------ main header ----------------------------- */
@@ -478,8 +470,6 @@ function aggregateNavCounts(workspace: WorkspaceData | null) {
 export function MainHeader({
   project,
   workspace,
-  tab,
-  onTab,
   selectedTicket,
   selectedCount,
   handoffDisabled,
@@ -489,12 +479,11 @@ export function MainHeader({
   gapsOnly,
   onToggleGaps,
   onCapture,
+  onOpenAssistant,
   onSendHandoff,
 }: {
   project: WaymarkProject | null;
   workspace: WorkspaceData | null;
-  tab: MainTab;
-  onTab: (value: MainTab) => void;
   selectedTicket: Ticket | null;
   selectedCount: number;
   handoffDisabled: boolean;
@@ -504,15 +493,9 @@ export function MainHeader({
   gapsOnly: boolean;
   onToggleGaps: () => void;
   onCapture: () => void;
+  onOpenAssistant: () => void;
   onSendHandoff: () => void;
 }) {
-  const counts = project
-    ? {
-        tickets: project.tickets.filter((t) => t.status !== "done" && t.status !== "idea").length,
-        decisions: project.decisions.length,
-        threads: project.threads.length,
-      }
-    : { tickets: 0, decisions: 0, threads: 0 };
   const handoffLabel =
     selectedCount > 0 ? `Handoff ${selectedCount}` : selectedTicket ? `Handoff: ${selectedTicket.title}` : "Handoff";
 
@@ -536,19 +519,6 @@ export function MainHeader({
         <div className="text-[11.5px] text-ink-faint flex-1 min-w-0 truncate">
           Focus: <b className="text-ink-soft font-medium">{project?.config.current_focus || project?.config.summary || "—"}</b>
         </div>
-        <nav className="flex h-full items-center ml-auto shrink-0 min-w-0 overflow-x-auto scrollbar-none">
-          <Tab id="overview" active={tab === "overview"} onClick={onTab}>Overview</Tab>
-          <Tab id="tickets" active={tab === "tickets"} onClick={onTab}>
-            Tickets <TabBadge>{counts.tickets}</TabBadge>
-          </Tab>
-          <Tab id="decisions" active={tab === "decisions"} onClick={onTab}>
-            Decisions <TabBadge>{counts.decisions}</TabBadge>
-          </Tab>
-          <Tab id="threads" active={tab === "threads"} onClick={onTab}>
-            Threads <TabBadge>{counts.threads}</TabBadge>
-          </Tab>
-          <Tab id="files" active={tab === "files"} onClick={onTab}>Files</Tab>
-        </nav>
       </div>
 
       <div className="flex items-center gap-2 px-[18px] py-2.5 border-b border-line shrink-0">
@@ -574,44 +544,13 @@ export function MainHeader({
         <Btn variant="ghost" onClick={onCapture}>
           <Plus size={13} /> Capture
         </Btn>
+        <Btn variant="ghost" onClick={onOpenAssistant} title="Open Assistant">
+          <Bot size={13} /> Assistant <CommandShortcutBadge value="⇧A" tone="subtle" />
+        </Btn>
         <Btn variant="primary" onClick={onSendHandoff} disabled={handoffDisabled}>
           <Sparkles size={11} /> <span className="max-w-[180px] truncate">{handoffLabel}</span> <CommandShortcutBadge value="↵" tone="primary" />
         </Btn>
       </div>
     </>
-  );
-}
-
-function Tab({
-  id,
-  active,
-  children,
-  onClick,
-}: {
-  id: MainTab;
-  active: boolean;
-  children: ReactNode;
-  onClick: (id: MainTab) => void;
-}) {
-  return (
-    <button
-      onClick={() => onClick(id)}
-      className={cx(
-        "relative h-full inline-flex items-center gap-1.5 px-2 text-[11.5px] whitespace-nowrap shrink-0 cursor-pointer",
-        active
-          ? "text-ink after:content-[''] after:absolute after:left-2.5 after:right-2.5 after:-bottom-px after:h-0.5 after:bg-accent after:rounded-t-[2px]"
-          : "text-ink-faint hover:text-ink",
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
-function TabBadge({ children }: { children: ReactNode }) {
-  return (
-    <span className="font-mono text-[10px] bg-surface-row-selected border border-line px-1 rounded-[3px] text-ink-faint leading-[14px]">
-      {children}
-    </span>
   );
 }

@@ -48,6 +48,8 @@ pub(crate) struct CodexRunRequest {
     prompt: String,
     schema: Option<String>,
     timeout_ms: Option<u64>,
+    model: Option<String>,
+    model_reasoning_effort: Option<String>,
 }
 
 struct CodexAppRuntime {
@@ -137,12 +139,15 @@ pub(crate) fn codex_run_structured(request: CodexRunRequest) -> Result<CodexRunR
 pub(crate) async fn codex_app_session_start(
     state: tauri::State<'_, CodexSessions>,
     cwd: String,
+    model: Option<String>,
+    model_reasoning_effort: Option<String>,
 ) -> Result<CodexAppSession, String> {
     let sessions = state.0.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let path = find_codex_binary().ok_or_else(|| "Codex was not found.".to_string())?;
         let id = format!("waymark-{}", unique_suffix());
-        let mut runtime = start_codex_app_runtime(&path)?;
+        let mut runtime =
+            start_codex_app_runtime(&path, model.as_deref(), model_reasoning_effort.as_deref())?;
         initialize_codex_app_runtime(&mut runtime)?;
         let thread_id = start_codex_app_thread(&mut runtime, &cwd)?;
         runtime.thread_id = thread_id;
@@ -235,9 +240,14 @@ fn find_codex_binary() -> Option<String> {
     None
 }
 
-fn start_codex_app_runtime(path: &str) -> Result<CodexAppRuntime, String> {
+fn start_codex_app_runtime(
+    path: &str,
+    model: Option<&str>,
+    model_reasoning_effort: Option<&str>,
+) -> Result<CodexAppRuntime, String> {
     let mut child = Command::new(path)
         .arg("app-server")
+        .args(codex_config_args(model, model_reasoning_effort))
         .arg("--listen")
         .arg("stdio://")
         .stdin(Stdio::piped())
@@ -571,6 +581,10 @@ fn run_codex_exec(request: CodexRunRequest, route: &str) -> Result<CodexRunResul
     if let Some(path) = &schema_path {
         command.arg("--output-schema").arg(path);
     }
+    command.args(codex_config_args(
+        request.model.as_deref(),
+        request.model_reasoning_effort.as_deref(),
+    ));
 
     command.arg("-");
     command
@@ -667,6 +681,30 @@ fn parse_output_schema(schema: Option<&String>) -> Result<Option<Value>, String>
     schema
         .map(|schema| serde_json::from_str::<Value>(schema).map_err(|error| error.to_string()))
         .transpose()
+}
+
+fn codex_config_args(model: Option<&str>, model_reasoning_effort: Option<&str>) -> Vec<String> {
+    let mut args = Vec::new();
+    if let Some(model) = clean_config_value(model) {
+        args.push("--config".to_string());
+        args.push(toml_config_arg("model", model));
+    }
+    if let Some(effort) = clean_config_value(model_reasoning_effort) {
+        args.push("--config".to_string());
+        args.push(toml_config_arg("model_reasoning_effort", effort));
+    }
+    args
+}
+
+fn clean_config_value(value: Option<&str>) -> Option<&str> {
+    value.map(str::trim).filter(|value| !value.is_empty())
+}
+
+fn toml_config_arg(key: &str, value: &str) -> String {
+    format!(
+        "{key}=\"{}\"",
+        value.replace('\\', "\\\\").replace('"', "\\\"")
+    )
 }
 
 fn message_id(message: &Value) -> Option<u64> {

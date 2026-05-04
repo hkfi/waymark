@@ -77,7 +77,7 @@ These are safe MVP improvements:
 - clearer validation and warning messages
 - better project overview and local ticket UX
 - better context selection for handoff prompts
-- manual repo/link/thread references
+- manual repo, Context, and thread references
 - Markdown/YAML docs that improve agent context
 - self-workspace improvements under `projects/waymark/`
 - explicit file writes for user-created tickets, notes, decisions, thread references, and prompts
