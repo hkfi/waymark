@@ -1,37 +1,46 @@
-import { AlertTriangle, ArrowRight, Copy, FileText, Link2, ListOrdered, MessageSquareText, Sparkles, type LucideIcon } from "lucide-react";
+import { AlertTriangle, ArrowRight, Copy, FileText, HardDrive, Link2, ListOrdered, MessageSquareText, Send, Sparkles, Trash2, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
+import type { ContextRow } from "../contextRows";
 import { openPath } from "../tauri";
-import type { NoteRecord, ThreadRecord, Ticket, TicketStatus, WaymarkProject, WorkspaceData } from "../types";
+import type { LinkRecord, NoteRecord, ThreadRecord, Ticket, TicketStatus, WaymarkProject, WorkspaceData } from "../types";
 import { buildPrompt } from "../workspace";
 import { activeLane, projectFile, resolveProjectPath, tokenEstimate, type InspectorMode } from "../app/model";
 import { AssistantView } from "./assistant";
 import { Btn, Card, Cell, CommandShortcutBadge, DataRow, EmptyRow, StatusChip, cx } from "./primitives";
 
 export function Inspector({
+  scope,
   mode,
   onMode,
   project,
   ticket,
   thread,
   note,
+  contextRow,
   multi,
   workspace,
   onSendHandoff,
   onStatus,
   onEditTicket,
+  onToggleContextHandoff,
+  onDeleteContextLink,
   onSaved,
 }: {
+  scope: "tickets" | "memory" | "context";
   mode: InspectorMode;
   onMode: (value: InspectorMode) => void;
   project: WaymarkProject | null;
   ticket: Ticket | null;
   thread: ThreadRecord | null;
   note: NoteRecord | null;
+  contextRow: ContextRow | null;
   multi: string[];
   workspace: WorkspaceData | null;
   onSendHandoff: () => void;
   onStatus: (ticket: Ticket, status: TicketStatus) => void;
   onEditTicket: (ticket: Ticket) => void;
+  onToggleContextHandoff: (link: LinkRecord, included: boolean) => void;
+  onDeleteContextLink: (link: LinkRecord) => void;
   onSaved: () => Promise<void>;
 }) {
   const bundleSize = multi.length;
@@ -39,24 +48,49 @@ export function Inspector({
   return (
     <aside className="inspector-shell bg-surface-rail-2 border-l border-line flex flex-col min-h-0 min-w-0 overflow-hidden">
       <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-line shrink-0 min-w-0 overflow-x-auto scrollbar-none">
-        <InspectorTab active={mode === "ticket"} onClick={() => onMode("ticket")} icon={FileText}>
-          Ticket
-        </InspectorTab>
-        <InspectorTab active={mode === "prompt"} onClick={() => onMode("prompt")} icon={Sparkles}>
-          Prompt
-          {bundleSize > 0 ? (
-            <span className="font-mono text-[9.5px] px-1 rounded-[3px] bg-accent text-accent-ink leading-[14px]">{bundleSize}</span>
-          ) : null}
-        </InspectorTab>
-        <InspectorTab active={mode === "assistant"} onClick={() => onMode("assistant")} icon={Sparkles}>
-          AI
-        </InspectorTab>
-        <InspectorTab active={mode === "thread"} onClick={() => onMode("thread")} icon={MessageSquareText}>
-          Ref
-        </InspectorTab>
-        <InspectorTab active={mode === "note"} onClick={() => onMode("note")} icon={ListOrdered}>
-          Note
-        </InspectorTab>
+        {scope === "context" ? (
+          <>
+            <InspectorTab active={mode === "context"} onClick={() => onMode("context")} icon={Link2}>
+              Context
+            </InspectorTab>
+            <InspectorTab active={mode === "assistant"} onClick={() => onMode("assistant")} icon={Sparkles}>
+              AI
+            </InspectorTab>
+          </>
+        ) : scope === "memory" ? (
+          <>
+            <InspectorTab active={mode === "note"} onClick={() => onMode("note")} icon={ListOrdered}>
+              Note
+            </InspectorTab>
+            <InspectorTab active={mode === "thread"} onClick={() => onMode("thread")} icon={MessageSquareText}>
+              Ref
+            </InspectorTab>
+            <InspectorTab active={mode === "assistant"} onClick={() => onMode("assistant")} icon={Sparkles}>
+              AI
+            </InspectorTab>
+          </>
+        ) : (
+          <>
+            <InspectorTab active={mode === "ticket"} onClick={() => onMode("ticket")} icon={FileText}>
+              Ticket
+            </InspectorTab>
+            <InspectorTab active={mode === "prompt"} onClick={() => onMode("prompt")} icon={Sparkles}>
+              Prompt
+              {bundleSize > 0 ? (
+                <span className="font-mono text-[9.5px] px-1 rounded-[3px] bg-accent text-accent-ink leading-[14px]">{bundleSize}</span>
+              ) : null}
+            </InspectorTab>
+            <InspectorTab active={mode === "assistant"} onClick={() => onMode("assistant")} icon={Sparkles}>
+              AI
+            </InspectorTab>
+            <InspectorTab active={mode === "thread"} onClick={() => onMode("thread")} icon={MessageSquareText}>
+              Ref
+            </InspectorTab>
+            <InspectorTab active={mode === "note"} onClick={() => onMode("note")} icon={ListOrdered}>
+              Note
+            </InspectorTab>
+          </>
+        )}
         <div className="flex-1 min-w-0" />
         <button
           onClick={() => project && openPath(project.rootPath)}
@@ -100,6 +134,12 @@ export function Inspector({
         </div>
       ) : mode === "thread" ? (
         <InspectorThread project={project} ticket={ticket} selectedThread={thread} />
+      ) : mode === "context" ? (
+        <InspectorContext
+          row={contextRow}
+          onToggleHandoff={onToggleContextHandoff}
+          onDeleteLink={onDeleteContextLink}
+        />
       ) : (
         <InspectorNote note={note} />
       )}
@@ -137,6 +177,116 @@ function InspectorEmpty({ children }: { children: ReactNode }) {
     <div className="flex-1 grid place-items-center text-ink-mute p-8 text-[12px] text-center">
       {children}
     </div>
+  );
+}
+
+function InspectorContext({
+  row,
+  onToggleHandoff,
+  onDeleteLink,
+}: {
+  row: ContextRow | null;
+  onToggleHandoff: (link: LinkRecord, included: boolean) => void;
+  onDeleteLink: (link: LinkRecord) => void;
+}) {
+  if (!row) {
+    return <InspectorEmpty>Select a context item to inspect.</InspectorEmpty>;
+  }
+
+  const included = Boolean(row.includeInHandoff);
+  const sourceLabel = {
+    project: "Project repo reference",
+    legacy: "Legacy project link",
+    link: "Context registry item",
+    ticket: "Ticket-linked file",
+  }[row.source];
+  const sourceFile = {
+    project: "project.yaml",
+    legacy: "project.yaml",
+    link: "links.yaml",
+    ticket: "tickets.yaml",
+  }[row.source];
+
+  return (
+    <>
+      <InspectorBody>
+        <InspectorHead
+          eyebrow={
+            <>
+              <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-mute">{row.kind}</span>
+              <ContextPromptPill included={included} />
+            </>
+          }
+          title={row.label}
+          meta={<div className="font-mono text-[10.5px] text-ink-mute break-all">{row.id}</div>}
+        />
+
+        <InspectorSection label="Target">
+          <div className="rounded-[5px] border border-line-soft bg-surface-input-2 px-2.5 py-2 font-mono text-[11px] leading-[1.45] text-ink-soft break-all">
+            {row.value || "No path or URL."}
+          </div>
+        </InspectorSection>
+
+        <InspectorSection label="Source">
+          <div className="text-[12px] leading-[1.5] text-ink-faint">
+            {sourceLabel} from <code>{sourceFile}</code>
+            {row.source === "link"
+              ? ". This row can be toggled or removed here."
+              : ". Edit the source record to change or remove it."}
+          </div>
+        </InspectorSection>
+      </InspectorBody>
+
+      <InspectorActions>
+        <Btn
+          variant="ghost"
+          onClick={() => navigator.clipboard?.writeText(row.value).catch(() => undefined)}
+          disabled={!row.value}
+        >
+          <Copy size={11} /> Copy
+        </Btn>
+        {row.actionPath ? (
+          <Btn variant="ghost" onClick={() => openPath(row.actionPath as string)}>
+            <ArrowRight size={11} /> Open
+          </Btn>
+        ) : null}
+        {row.link ? (
+          <Btn variant="ghost" onClick={() => onToggleHandoff(row.link as LinkRecord, included)}>
+            {included ? <HardDrive size={11} /> : <Send size={11} />}
+            {included ? "Make local" : "Include in prompt"}
+          </Btn>
+        ) : null}
+        {row.link ? (
+          <Btn
+            variant="ghost"
+            onClick={() => {
+              if (window.confirm(`Remove ${row.label} from Context?`)) {
+                onDeleteLink(row.link as LinkRecord);
+              }
+            }}
+          >
+            <Trash2 size={11} /> Remove
+          </Btn>
+        ) : null}
+      </InspectorActions>
+    </>
+  );
+}
+
+function ContextPromptPill({ included }: { included: boolean }) {
+  const Icon = included ? Send : HardDrive;
+  return (
+    <span
+      className={cx(
+        "inline-flex items-center gap-1 rounded-[3px] border px-1.5 py-px font-mono text-[9.5px]",
+        included
+          ? "text-lane-done border-[oklch(0.74_0.13_150_/_0.28)] bg-[oklch(0.74_0.13_150_/_0.10)]"
+          : "text-ink-mute border-line-soft bg-surface-2",
+      )}
+    >
+      <Icon size={9.5} />
+      {included ? "prompt" : "local"}
+    </span>
   );
 }
 

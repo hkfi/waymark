@@ -1,10 +1,33 @@
-import { AlertTriangle, ArrowRight, Check, Copy, FileText, Link2, MessageSquareText, Plus } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  BookOpen,
+  Box,
+  Check,
+  Copy,
+  FileCheck2,
+  FileText,
+  Gauge,
+  GitBranch,
+  Globe2,
+  HardDrive,
+  Link2,
+  MessageSquareText,
+  Palette,
+  Plus,
+  Rocket,
+  Send,
+  Server,
+  Trash2,
+  type LucideIcon,
+} from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
+import { contextRowKey, contextRows, type ContextRow } from "../contextRows";
 import { openPath } from "../tauri";
-import type { NoteRecord, ThreadRecord, Ticket, WaymarkProject, WorkspaceData } from "../types";
-import { shouldIncludeContextInHandoff, ticketWarnings } from "../workspace";
-import { LANES_IN_QUEUE, LANE_LABEL, activeLane, buildActivity, matchesSearch, projectFile, resolveProjectPath, ticketHasFlag, type Lane, type NavId } from "../app/model";
-import { Btn, Card, Cell, DataRow, EmptyRow, Flag, Pin, SectionHead, cx } from "./primitives";
+import type { LinkRecord, NoteRecord, ThreadRecord, Ticket, WaymarkProject, WorkspaceData } from "../types";
+import { ticketWarnings } from "../workspace";
+import { LANES_IN_QUEUE, LANE_LABEL, activeLane, buildActivity, matchesSearch, projectFile, ticketHasFlag, type Lane, type NavId } from "../app/model";
+import { Btn, Card, Cell, DataRow, EmptyRow, Flag, IconButton, Pin, SectionHead, cx } from "./primitives";
 
 function Stats({ project }: { project: WaymarkProject }) {
   const counts = useMemo(() => {
@@ -77,6 +100,10 @@ export function CockpitContent({
   onAddFile,
   onAddLink,
   onOnboardRepo,
+  onToggleLinkHandoff,
+  onDeleteLink,
+  selectedContextKey,
+  onSelectContext,
 }: {
   nav: NavId;
   project: WaymarkProject;
@@ -94,6 +121,10 @@ export function CockpitContent({
   onAddFile: () => void;
   onAddLink: () => void;
   onOnboardRepo: () => void;
+  onToggleLinkHandoff: (link: LinkRecord, included: boolean) => void;
+  onDeleteLink: (link: LinkRecord) => void;
+  selectedContextKey: string | null;
+  onSelectContext: (row: ContextRow) => void;
 }) {
   if (nav === "tickets") {
     return (
@@ -129,11 +160,14 @@ export function CockpitContent({
     return (
       <ContextView
         project={project}
-        selectedTicket={selectedTicket}
         search={search}
         onAddFile={onAddFile}
         onAddLink={onAddLink}
         onOnboardRepo={onOnboardRepo}
+        onToggleLinkHandoff={onToggleLinkHandoff}
+        onDeleteLink={onDeleteLink}
+        selectedContextKey={selectedContextKey}
+        onSelectContext={onSelectContext}
       />
     );
   }
@@ -622,76 +656,131 @@ function ThreadsView({
   );
 }
 
-type ContextRow = {
-  kind: string;
-  id: string;
-  label: string;
-  value: string;
-  actionPath?: string;
-  includeInHandoff?: boolean;
+const CONTEXT_KIND_META: Record<LinkRecord["type"] | "legacy" | "ticket file", { label: string; Icon: LucideIcon }> = {
+  repo: { label: "Repository", Icon: GitBranch },
+  file: { label: "File", Icon: FileText },
+  deploy: { label: "Deploy", Icon: Rocket },
+  dashboard: { label: "Dashboard", Icon: Gauge },
+  doc: { label: "Documentation", Icon: BookOpen },
+  design: { label: "Design", Icon: Palette },
+  service: { label: "Service", Icon: Server },
+  domain: { label: "Domain", Icon: Globe2 },
+  other: { label: "Other context", Icon: Box },
+  legacy: { label: "Legacy link", Icon: Link2 },
+  "ticket file": { label: "Ticket file", Icon: FileCheck2 },
 };
 
-function contextRows(project: WaymarkProject): ContextRow[] {
-  return [
-    ...(project.config.repos ?? []).map((repo) => ({
-      kind: "repo",
-      id: repo.id,
-      label: repo.name,
-      value: repo.path ?? repo.url ?? repo.name,
-      actionPath: repo.path ?? repo.url,
-      includeInHandoff: true,
-    })),
-    ...Object.entries(project.config.links ?? {}).map(([id, url]) => ({
-      kind: "legacy",
-      id,
-      label: id,
-      value: url,
-      actionPath: url,
-      includeInHandoff: true,
-    })),
-    ...project.links.map((link) => ({
-      kind: link.type,
-      id: link.id,
-      label: link.label,
-      value: link.url ?? link.path ?? "",
-      actionPath: link.url ?? (link.path ? resolveProjectPath(project, link.path) : undefined),
-      includeInHandoff: shouldIncludeContextInHandoff(link),
-    })),
-    ...project.tickets.flatMap((ticket) =>
-      (ticket.linked_files ?? []).map((file) => ({
-        kind: "ticket file",
-        id: ticket.id,
-        label: ticket.title,
-        value: file,
-        actionPath: resolveProjectPath(project, file),
-        includeInHandoff: true,
-      })),
-    ),
-  ];
+function contextKindMeta(kind: string) {
+  return CONTEXT_KIND_META[kind as keyof typeof CONTEXT_KIND_META] ?? { label: kind, Icon: Box };
+}
+
+function ContextKindIcon({ kind }: { kind: string }) {
+  const meta = contextKindMeta(kind);
+  const Icon = meta.Icon;
+  return (
+    <div
+      aria-label={meta.label}
+      data-tooltip={meta.label}
+      className="tooltip-target grid h-[22px] w-[22px] place-items-center rounded-[4px] border border-line-soft bg-surface-row-selected text-ink-faint"
+    >
+      <Icon size={12.5} aria-hidden="true" />
+    </div>
+  );
+}
+
+function HandoffEligibilityBadge({
+  included,
+  editable,
+  onToggle,
+}: {
+  included?: boolean;
+  editable?: boolean;
+  onToggle?: () => void;
+}) {
+  const enabled = Boolean(included);
+  const Icon = enabled ? Send : HardDrive;
+  const label = enabled ? "Included in generated handoff prompts" : "Excluded from generated handoff prompts";
+  const tooltip = editable
+    ? `${label}. Click to switch to ${enabled ? "local only" : "prompt"}.`
+    : `${label}; managed from its source file.`;
+  const className = cx(
+    "tooltip-target inline-flex min-w-[64px] items-center justify-center gap-1 font-mono text-[9.5px] px-1.5 py-px rounded-[3px] border",
+    enabled
+      ? "text-lane-done border-[oklch(0.74_0.13_150_/_0.28)] bg-[oklch(0.74_0.13_150_/_0.10)]"
+      : "text-ink-mute border-line-soft bg-surface-2",
+    editable && "hover:bg-surface-3 hover:text-ink cursor-pointer",
+  );
+
+  const children = (
+    <>
+      <Icon size={9.5} aria-hidden="true" />
+      {enabled ? "prompt" : "local"}
+    </>
+  );
+
+  if (editable) {
+    return (
+      <button
+        type="button"
+        aria-label={tooltip}
+        aria-pressed={enabled}
+        data-tooltip={tooltip}
+        className={className}
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggle?.();
+        }}
+      >
+        {children}
+      </button>
+    );
+  }
+
+  return (
+    <span
+      aria-label={label}
+      data-tooltip={tooltip}
+      className={className}
+    >
+      {children}
+    </span>
+  );
+}
+
+function ContextActionSpacer() {
+  return <span className="h-[22px] w-[22px]" aria-hidden="true" />;
 }
 
 function ContextView({
   project,
-  selectedTicket,
   search,
   onAddFile,
   onAddLink,
   onOnboardRepo,
+  onToggleLinkHandoff,
+  onDeleteLink,
+  selectedContextKey,
+  onSelectContext,
 }: {
   project: WaymarkProject;
-  selectedTicket: Ticket | null;
   search: string;
   onAddFile: () => void;
   onAddLink: () => void;
   onOnboardRepo: () => void;
+  onToggleLinkHandoff: (link: LinkRecord, included: boolean) => void;
+  onDeleteLink: (link: LinkRecord) => void;
+  selectedContextKey: string | null;
+  onSelectContext: (row: ContextRow) => void;
 }) {
   const rows = contextRows(project).filter((row) => matchesSearch([row.kind, row.id, row.label, row.value], search));
+  const promptCount = rows.filter((row) => row.includeInHandoff).length;
+  const localCount = rows.length - promptCount;
 
   return (
     <div className="mb-[22px]">
       <SectionHead
         more={
-          <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center justify-end gap-1 min-w-0 max-w-full">
             <Btn variant="ghost" onClick={onAddFile}>
               <Plus size={11} /> File
             </Btn>
@@ -704,7 +793,7 @@ function ContextView({
           </div>
         }
       >
-        Context <span className="font-mono text-[10px] text-ink-mute font-normal normal-case tracking-normal">{rows.length}{selectedTicket ? ` · ${selectedTicket.id}` : ""}</span>
+        Context <span className="font-mono text-[10px] text-ink-mute font-normal normal-case tracking-normal">{rows.length} · {promptCount} prompt · {localCount} local</span>
       </SectionHead>
       <Card>
         {rows.length === 0 ? (
@@ -712,54 +801,63 @@ function ContextView({
         ) : (
           rows.map((row) => (
             <DataRow
-              key={`${row.kind}-${row.id}-${row.value}`}
-              cols="grid-cols-link"
+              key={contextRowKey(row)}
+              cols="grid-cols-context"
               height={32}
               paddingX={12}
               gap={10}
-              onClick={row.actionPath ? () => openPath(row.actionPath as string) : undefined}
-              ariaLabel={`Open ${row.kind} ${row.label}`}
+              selected={selectedContextKey === contextRowKey(row)}
+              onClick={() => onSelectContext(row)}
+              ariaLabel={`Select ${row.kind} ${row.label}`}
             >
-              <Cell mono size={9.5} tone="mute" className="uppercase tracking-[0.07em]">{row.kind}</Cell>
+              <ContextKindIcon kind={row.kind} />
               <Cell mono size={11} tone="faint">{row.id}</Cell>
               <div className="min-w-0">
-                <div className="truncate text-[12px] text-ink-soft" title={row.label}>{row.label}</div>
-                <div className="truncate font-mono text-[10.5px] text-ink-mute" title={row.value}>{row.value}</div>
+                <div className="tooltip-target truncate text-[12px] text-ink-soft" data-tooltip={row.label}>{row.label}</div>
+                <div className="tooltip-target truncate font-mono text-[10.5px] text-ink-mute" data-tooltip={row.value}>{row.value}</div>
               </div>
-              <div className="flex items-center gap-1 justify-end shrink-0">
-                <span
-                  title={row.includeInHandoff ? "Included in handoff prompts" : "Excluded from handoff prompts"}
-                  className={cx(
-                    "hidden xl:inline-flex font-mono text-[9.5px] px-1.5 py-px rounded-[3px] border",
-                    row.includeInHandoff
-                      ? "text-lane-done border-[oklch(0.74_0.13_150_/_0.28)] bg-[oklch(0.74_0.13_150_/_0.10)]"
-                      : "text-ink-mute border-line-soft bg-surface-2",
-                  )}
-                >
-                  {row.includeInHandoff ? "handoff" : "private"}
-                </span>
-                <button
+              <div className="grid grid-cols-[64px_22px_22px_22px] items-center gap-1 justify-end shrink-0">
+                <HandoffEligibilityBadge
+                  included={row.includeInHandoff}
+                  editable={Boolean(row.link)}
+                  onToggle={row.link ? () => onToggleLinkHandoff(row.link as LinkRecord, Boolean(row.includeInHandoff)) : undefined}
+                />
+                <IconButton
+                  label="Copy context value"
+                  tooltip="Copy path or URL"
                   onClick={(event) => {
                     event.stopPropagation();
                     navigator.clipboard?.writeText(row.value).catch(() => undefined);
                   }}
-                  title="Copy"
-                  className="inline-flex items-center gap-1 px-1.5 py-0.5 text-ink-faint rounded-[3px] text-[11px] hover:bg-surface-3 hover:text-ink cursor-pointer"
                 >
                   <Copy size={10} />
-                </button>
+                </IconButton>
                 {row.actionPath ? (
-                  <button
+                  <IconButton
+                    label="Open context target"
+                    tooltip="Open path or URL"
                     onClick={(event) => {
                       event.stopPropagation();
                       openPath(row.actionPath as string);
                     }}
-                    title="Open"
-                    className="inline-flex items-center gap-1 px-1.5 py-0.5 text-ink-faint rounded-[3px] text-[11px] hover:bg-surface-3 hover:text-ink cursor-pointer"
                   >
                     <ArrowRight size={10} />
-                  </button>
-                ) : null}
+                  </IconButton>
+                ) : <ContextActionSpacer />}
+                {row.link ? (
+                  <IconButton
+                    label="Remove context item"
+                    tooltip="Remove from Context"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      if (window.confirm(`Remove ${row.label} from Context?`)) {
+                        onDeleteLink(row.link as LinkRecord);
+                      }
+                    }}
+                  >
+                    <Trash2 size={10} />
+                  </IconButton>
+                ) : <ContextActionSpacer />}
               </div>
             </DataRow>
           ))
@@ -803,17 +901,17 @@ function ContextPreview({
           rows.map((row) => (
             <DataRow
               key={`${row.kind}-${row.id}-${row.value}`}
-              cols="grid-cols-link"
+              cols="grid-cols-context"
               height={28}
               paddingX={12}
               gap={10}
               onClick={row.actionPath ? () => openPath(row.actionPath as string) : undefined}
               ariaLabel={`Open ${row.kind} ${row.label}`}
             >
-              <Cell mono size={9.5} tone="mute" className="uppercase tracking-[0.07em]">{row.kind}</Cell>
+              <ContextKindIcon kind={row.kind} />
               <Cell mono size={10.5} tone="faint">{row.id}</Cell>
-              <Cell size={12} tone="soft" title={row.label}>{row.label}</Cell>
-              <Cell mono size={10.5} tone="mute" align="end" title={row.value}>{row.value}</Cell>
+              <div className="tooltip-target min-w-0 truncate text-[12px] leading-tight text-ink-soft" data-tooltip={row.label}>{row.label}</div>
+              <div className="tooltip-target min-w-0 truncate text-right font-mono text-[10.5px] leading-tight text-ink-mute" data-tooltip={row.value}>{row.value}</div>
             </DataRow>
           ))
         )}

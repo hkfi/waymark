@@ -37,6 +37,34 @@ export function Btn({
   );
 }
 
+export function IconButton({
+  label,
+  tooltip = label,
+  className,
+  children,
+  type = "button",
+  ...rest
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
+  label: string;
+  tooltip?: string;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      {...rest}
+      type={type}
+      aria-label={label}
+      data-tooltip={tooltip}
+      className={cx(
+        "tooltip-target inline-flex items-center justify-center h-[22px] w-[22px] text-ink-faint rounded-[3px] text-[11px] hover:bg-surface-3 hover:text-ink disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-ink-faint",
+        className,
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function CommandShortcutBadge({
   value,
   tone = "default",

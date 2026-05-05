@@ -231,6 +231,47 @@ export function useProjectActions({
     [closeFileModal, project, refresh, setError, setNotice],
   );
 
+  const updateLink = useCallback(
+    async (link: LinkRecord) => {
+      if (!project) return;
+      if (!isTauri()) {
+        setNotice("Run Waymark through Tauri to update context links.");
+        return;
+      }
+
+      try {
+        await saveLinks(
+          project,
+          project.links.map((item) => (item.id === link.id ? link : item)),
+        );
+        setNotice(`Updated ${link.label}.`);
+        await refresh();
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    },
+    [project, refresh, setError, setNotice],
+  );
+
+  const deleteLink = useCallback(
+    async (link: LinkRecord) => {
+      if (!project) return;
+      if (!isTauri()) {
+        setNotice("Run Waymark through Tauri to remove context links.");
+        return;
+      }
+
+      try {
+        await saveLinks(project, project.links.filter((item) => item.id !== link.id));
+        setNotice(`Removed ${link.label}.`);
+        await refresh();
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    },
+    [project, refresh, setError, setNotice],
+  );
+
   const onboardRepo = useCallback(
     async (repo: RepoRef) => {
       if (!project) return;
@@ -263,8 +304,10 @@ export function useProjectActions({
       capture,
       addFile,
       addLink,
+      updateLink,
+      deleteLink,
       onboardRepo,
     }),
-    [addFile, addLink, capture, changeStatus, onboardRepo, saveTicket, sendHandoff],
+    [addFile, addLink, capture, changeStatus, deleteLink, onboardRepo, saveTicket, sendHandoff, updateLink],
   );
 }

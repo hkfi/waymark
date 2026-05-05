@@ -15,6 +15,9 @@ type KeyboardShortcutDeps = {
   setInspectorMode: (mode: InspectorMode) => void;
   changeStatus: (ticket: Ticket, status: TicketStatus) => void;
   sendHandoff: () => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
+  resetZoom: () => void;
   refreshWorkspace: () => Promise<void>;
   chooseWorkspace: () => Promise<void>;
   search: string;
@@ -50,6 +53,9 @@ export function useKeyboardShortcuts({
   setInspectorMode,
   changeStatus,
   sendHandoff,
+  zoomIn,
+  zoomOut,
+  resetZoom,
   refreshWorkspace,
   chooseWorkspace,
   search,
@@ -119,6 +125,7 @@ export function useKeyboardShortcuts({
       const key = event.key.toLowerCase();
       const command = event.metaKey || event.ctrlKey;
       const typing = isTypingTarget(event.target);
+      const ticketScopedView = nav === "home" || nav === "tickets";
 
       if (key === "escape") {
         if (closeTopModal()) {
@@ -140,6 +147,20 @@ export function useKeyboardShortcuts({
         event.preventDefault();
         searchInputRef.current?.focus();
         searchInputRef.current?.select();
+        return;
+      }
+
+      if (command && !event.altKey && (key === "=" || key === "+" || key === "-" || key === "_" || key === "0")) {
+        event.preventDefault();
+        if (key === "0") {
+          resetZoom();
+          return;
+        }
+        if (key === "-" || key === "_") {
+          zoomOut();
+          return;
+        }
+        zoomIn();
         return;
       }
 
@@ -193,11 +214,15 @@ export function useKeyboardShortcuts({
 
       if (command && key === "enter") {
         event.preventDefault();
+        if (!ticketScopedView) {
+          setNotice("Open Overview or Tickets to generate a ticket handoff.");
+          return;
+        }
         void sendHandoff();
         return;
       }
 
-      if (!selectedTicket) return;
+      if (!selectedTicket || !ticketScopedView) return;
 
       if (command && key === "e") {
         event.preventDefault();
@@ -277,6 +302,9 @@ export function useKeyboardShortcuts({
     setNotice,
     setSearch,
     toggleMulti,
+    resetZoom,
+    zoomIn,
+    zoomOut,
   ]);
 }
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { contextRowKey, contextRows, type ContextRow } from "../../contextRows";
 import type { NoteRecord, ThreadRecord, Ticket, WaymarkProject } from "../../types";
 import type { InspectorMode } from "../model";
 
@@ -6,6 +7,7 @@ export function useSelectionState(project: WaymarkProject | null) {
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [selectedNotePath, setSelectedNotePath] = useState<string | null>(null);
+  const [selectedContextKey, setSelectedContextKey] = useState<string | null>(null);
   const [multi, setMulti] = useState<string[]>([]);
   const [inspectorMode, setInspectorMode] = useState<InspectorMode>("ticket");
   const [editingTicketId, setEditingTicketId] = useState<string | null>(null);
@@ -30,11 +32,17 @@ export function useSelectionState(project: WaymarkProject | null) {
     return [...project.decisions, ...project.ideas].find((note) => note.path === selectedNotePath) ?? null;
   }, [project, selectedNotePath]);
 
+  const selectedContext = useMemo(() => {
+    if (!project || !selectedContextKey) return null;
+    return contextRows(project).find((row) => contextRowKey(row) === selectedContextKey) ?? null;
+  }, [project, selectedContextKey]);
+
   useEffect(() => {
     if (!project) {
       setSelectedTicketId(null);
       setSelectedThreadId(null);
       setSelectedNotePath(null);
+      setSelectedContextKey(null);
       setMulti([]);
       return;
     }
@@ -53,6 +61,11 @@ export function useSelectionState(project: WaymarkProject | null) {
       if (current && notes.some((note) => note.path === current)) return current;
       return project.decisions[0]?.path ?? project.ideas[0]?.path ?? null;
     });
+    setSelectedContextKey((current) => {
+      const rows = contextRows(project);
+      if (current && rows.some((row) => contextRowKey(row) === current)) return current;
+      return rows[0] ? contextRowKey(rows[0]) : null;
+    });
   }, [project]);
 
   const selectTicket = useCallback((ticket: Ticket) => {
@@ -68,6 +81,11 @@ export function useSelectionState(project: WaymarkProject | null) {
   const selectNote = useCallback((note: NoteRecord) => {
     setSelectedNotePath(note.path);
     setInspectorMode("note");
+  }, []);
+
+  const selectContext = useCallback((row: ContextRow) => {
+    setSelectedContextKey(contextRowKey(row));
+    setInspectorMode("context");
   }, []);
 
   const editTicket = useCallback((ticket: Ticket) => {
@@ -90,12 +108,15 @@ export function useSelectionState(project: WaymarkProject | null) {
       selectedTicket,
       selectedThread,
       selectedNote,
+      selectedContext,
+      selectedContextKey,
       editingTicket,
       multi,
       inspectorMode,
       selectTicket,
       selectThread,
       selectNote,
+      selectContext,
       setInspectorMode,
       editTicket,
       clearEditingTicket,
@@ -108,8 +129,11 @@ export function useSelectionState(project: WaymarkProject | null) {
       inspectorMode,
       multi,
       selectNote,
+      selectContext,
       selectThread,
       selectTicket,
+      selectedContext,
+      selectedContextKey,
       selectedNote,
       selectedThread,
       selectedTicket,

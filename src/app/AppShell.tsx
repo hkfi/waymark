@@ -31,34 +31,36 @@ export function AppShell() {
   const layout = useLayout();
 
   return (
-    <div className="app-frame w-screen h-screen bg-surface grid grid-rows-[36px_1fr] overflow-hidden">
-      <ToolbarRegion />
-      <div
-        className="app-shell grid grid-cols-shell xl:grid-cols-shell-wide h-full min-h-0 min-w-0 overflow-hidden"
-        style={layout.shellStyle}
-      >
-        <SidebarRegion />
-        <PaneResizeHandle
-          side="left"
-          value={layout.left.value}
-          min={layout.left.min}
-          max={layout.left.max}
-          onPointerDown={layout.left.beginResize}
-          onReset={layout.left.reset}
-        />
-        <MainRegion />
-        <PaneResizeHandle
-          side="right"
-          value={layout.right.value}
-          min={layout.right.min}
-          max={layout.right.max}
-          onPointerDown={layout.right.beginResize}
-          onReset={layout.right.reset}
-        />
-        <InspectorRegion />
+    <div className="app-viewport">
+      <div className="app-frame bg-surface grid grid-rows-[36px_1fr] overflow-hidden" style={layout.zoom.style}>
+        <ToolbarRegion />
+        <div
+          className="app-shell grid grid-cols-shell xl:grid-cols-shell-wide h-full min-h-0 min-w-0 overflow-hidden"
+          style={layout.shellStyle}
+        >
+          <SidebarRegion />
+          <PaneResizeHandle
+            side="left"
+            value={layout.left.value}
+            min={layout.left.min}
+            max={layout.left.max}
+            onPointerDown={layout.left.beginResize}
+            onReset={layout.left.reset}
+          />
+          <MainRegion />
+          <PaneResizeHandle
+            side="right"
+            value={layout.right.value}
+            min={layout.right.min}
+            max={layout.right.max}
+            onPointerDown={layout.right.beginResize}
+            onReset={layout.right.reset}
+          />
+          <InspectorRegion />
+        </div>
+        <ModalRegion />
+        <FeedbackToasts />
       </div>
-      <ModalRegion />
-      <FeedbackToasts />
     </div>
   );
 }
@@ -141,14 +143,17 @@ function MainHeaderRegion() {
   const selection = useSelection();
   const workspace = useWorkspace();
   const selectedProject = workspace.selectedProject;
+  const ticketScopedView = navigation.nav === "home" || navigation.nav === "tickets";
+  const headerTicket = ticketScopedView ? selection.selectedTicket : null;
+  const selectedCount = ticketScopedView ? selection.multi.length : 0;
 
   return (
     <MainHeader
       project={selectedProject}
       workspace={workspace.data}
-      selectedTicket={selection.selectedTicket}
-      selectedCount={selection.multi.length}
-      handoffDisabled={!selectedProject || (!selection.selectedTicket && selection.multi.length === 0)}
+      selectedTicket={headerTicket}
+      selectedCount={selectedCount}
+      handoffDisabled={!selectedProject || !ticketScopedView || (!headerTicket && selectedCount === 0)}
       search={filters.search}
       onSearch={filters.setSearch}
       searchInputRef={filters.searchInputRef}
@@ -168,6 +173,7 @@ function MainHeaderRegion() {
 }
 
 function MainContentRegion() {
+  const actions = useProjectActions();
   const feedback = useFeedback();
   const filters = useFilters();
   const modals = useModals();
@@ -226,6 +232,15 @@ function MainContentRegion() {
             }
             modals.openRepoOnboarding();
           }}
+          onToggleLinkHandoff={(link, included) =>
+            actions.updateLink({
+              ...link,
+              include_in_handoff: !included,
+            })
+          }
+          onDeleteLink={actions.deleteLink}
+          selectedContextKey={selection.selectedContextKey}
+          onSelectContext={selection.selectContext}
         />
       )}
     </div>
@@ -304,22 +319,49 @@ function NoProjectState({ onCreateProject }: { onCreateProject: () => void }) {
 
 function InspectorRegion() {
   const actions = useProjectActions();
+  const navigation = useNavigation();
   const selection = useSelection();
   const workspace = useWorkspace();
+  const inspectorScope =
+    navigation.nav === "context" ? "context" : navigation.nav === "memory" ? "memory" : "tickets";
+  const ticket = inspectorScope === "tickets" ? selection.selectedTicket : null;
+  const mode =
+    selection.inspectorMode === "assistant"
+      ? "assistant"
+      : inspectorScope === "context"
+        ? "context"
+        : inspectorScope === "memory"
+          ? selection.inspectorMode === "thread" || selection.inspectorMode === "note"
+            ? selection.inspectorMode
+            : selection.selectedNote
+              ? "note"
+              : "thread"
+          : selection.inspectorMode === "context"
+            ? "ticket"
+            : selection.inspectorMode;
 
   return (
     <Inspector
-      mode={selection.inspectorMode}
+      scope={inspectorScope}
+      mode={mode}
       onMode={selection.setInspectorMode}
       project={workspace.selectedProject}
-      ticket={selection.selectedTicket}
+      ticket={ticket}
       thread={selection.selectedThread}
       note={selection.selectedNote}
+      contextRow={selection.selectedContext}
       multi={selection.multi}
       workspace={workspace.data}
       onSendHandoff={actions.sendHandoff}
       onStatus={actions.changeStatus}
       onEditTicket={selection.editTicket}
+      onToggleContextHandoff={(link, included) =>
+        actions.updateLink({
+          ...link,
+          include_in_handoff: !included,
+        })
+      }
+      onDeleteContextLink={actions.deleteLink}
       onSaved={() => workspace.refresh()}
     />
   );

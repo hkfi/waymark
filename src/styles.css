@@ -63,12 +63,27 @@
   --grid-template-columns-idea: minmax(60px, 130px) minmax(80px, 1fr) 60px;
   --grid-template-columns-activity: minmax(60px, 80px) 12px 36px minmax(0, 1fr);
   --grid-template-columns-link: 60px minmax(0, 90px) minmax(0, 1fr) auto;
+  --grid-template-columns-context: 24px minmax(0, 90px) minmax(0, 1fr) auto;
   --grid-template-columns-order: 24px auto 110px minmax(0, 1fr) 24px;
   --grid-template-columns-proj: 16px minmax(0, 1fr) auto;
 }
 
 .app-shell {
   grid-template-columns: var(--shell-left, 240px) 6px minmax(0, 1fr) 6px var(--shell-right, 380px);
+}
+
+.app-viewport {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--color-shell);
+}
+
+.app-frame {
+  width: calc(100vw / var(--app-zoom, 1));
+  height: calc(100vh / var(--app-zoom, 1));
+  transform: scale(var(--app-zoom, 1));
+  transform-origin: top left;
 }
 
 .app-toolbar {
@@ -192,6 +207,41 @@
 
   .toast-close {
     @apply -mr-1 -mt-1 grid h-6 w-6 place-items-center rounded-[4px] text-ink-faint hover:bg-surface-4 hover:text-ink;
+  }
+
+  .tooltip-target {
+    position: relative;
+  }
+
+  .tooltip-target::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 7px);
+    z-index: 80;
+    max-width: min(260px, 80vw);
+    width: max-content;
+    padding: 4px 6px;
+    border: 1px solid var(--color-line);
+    border-radius: 4px;
+    background: oklch(0.14 0.005 250 / 0.98);
+    color: var(--color-ink-soft);
+    box-shadow: 0 8px 24px oklch(0 0 0 / 0.35);
+    font: 500 11px / 1.35 var(--font-sans);
+    letter-spacing: 0;
+    text-transform: none;
+    text-align: center;
+    white-space: normal;
+    pointer-events: none;
+    opacity: 0;
+    transform: translate(-50%, 2px);
+    transition: opacity 80ms ease-out 120ms, transform 80ms ease-out 120ms;
+  }
+
+  .tooltip-target:hover::after,
+  .tooltip-target:focus-visible::after {
+    opacity: 1;
+    transform: translate(-50%, 0);
   }
 
   .lane-pin { @apply w-1.5 h-1.5 rounded-full shrink-0; }

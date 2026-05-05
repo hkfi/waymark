@@ -15,6 +15,11 @@ import {
   RIGHT_WIDTH_KEY,
   RIGHT_WIDTH_MAX,
   RIGHT_WIDTH_MIN,
+  VIEW_ZOOM_DEFAULT,
+  VIEW_ZOOM_KEY,
+  VIEW_ZOOM_MAX,
+  VIEW_ZOOM_MIN,
+  VIEW_ZOOM_STEP,
   clamp,
   storedWidth,
 } from "../model";
@@ -26,6 +31,9 @@ export function usePaneLayout() {
   const [rightWidth, setRightWidth] = useState(() =>
     storedWidth(RIGHT_WIDTH_KEY, RIGHT_WIDTH_DEFAULT, RIGHT_WIDTH_MIN, RIGHT_WIDTH_MAX),
   );
+  const [viewZoom, setViewZoom] = useState(() =>
+    storedWidth(VIEW_ZOOM_KEY, VIEW_ZOOM_DEFAULT, VIEW_ZOOM_MIN, VIEW_ZOOM_MAX),
+  );
 
   useEffect(() => {
     window.localStorage.setItem(LEFT_WIDTH_KEY, String(leftWidth));
@@ -35,6 +43,14 @@ export function usePaneLayout() {
     window.localStorage.setItem(RIGHT_WIDTH_KEY, String(rightWidth));
   }, [rightWidth]);
 
+  useEffect(() => {
+    window.localStorage.setItem(VIEW_ZOOM_KEY, String(viewZoom));
+  }, [viewZoom]);
+
+  const changeZoom = useCallback((delta: number) => {
+    setViewZoom((value) => Number(clamp(value + delta, VIEW_ZOOM_MIN, VIEW_ZOOM_MAX).toFixed(2)));
+  }, []);
+
   const beginResize = useCallback(
     (side: "left" | "right", event: ReactPointerEvent<HTMLDivElement>) => {
       event.preventDefault();
@@ -43,7 +59,7 @@ export function usePaneLayout() {
       const startRight = rightWidth;
 
       function handleMove(moveEvent: PointerEvent) {
-        const delta = moveEvent.clientX - startX;
+        const delta = (moveEvent.clientX - startX) / viewZoom;
         if (side === "left") {
           setLeftWidth(clamp(startLeft + delta, LEFT_WIDTH_MIN, LEFT_WIDTH_MAX));
           return;
@@ -61,7 +77,7 @@ export function usePaneLayout() {
       window.addEventListener("pointermove", handleMove);
       window.addEventListener("pointerup", handleUp, { once: true });
     },
-    [leftWidth, rightWidth],
+    [leftWidth, rightWidth, viewZoom],
   );
 
   const shellStyle = useMemo(
@@ -73,9 +89,25 @@ export function usePaneLayout() {
     [leftWidth, rightWidth],
   );
 
+  const zoomStyle = useMemo(
+    () =>
+      ({
+        "--app-zoom": String(viewZoom),
+      }) as CSSProperties,
+    [viewZoom],
+  );
+
   return useMemo(
     () => ({
       shellStyle,
+      zoom: {
+        value: viewZoom,
+        percent: Math.round(viewZoom * 100),
+        style: zoomStyle,
+        zoomIn: () => changeZoom(VIEW_ZOOM_STEP),
+        zoomOut: () => changeZoom(-VIEW_ZOOM_STEP),
+        reset: () => setViewZoom(VIEW_ZOOM_DEFAULT),
+      },
       left: {
         value: leftWidth,
         min: LEFT_WIDTH_MIN,
@@ -91,6 +123,6 @@ export function usePaneLayout() {
         beginResize: (event: ReactPointerEvent<HTMLDivElement>) => beginResize("right", event),
       },
     }),
-    [beginResize, leftWidth, rightWidth, shellStyle],
+    [beginResize, changeZoom, leftWidth, rightWidth, shellStyle, viewZoom, zoomStyle],
   );
 }

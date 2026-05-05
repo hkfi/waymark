@@ -14,6 +14,9 @@ Holding `Cmd`/`Ctrl` reveals shortcut badges on commandable cockpit navigation i
 | `Cmd/Ctrl+N` | Open Capture for the selected project. |
 | `Cmd/Ctrl+O` | Choose a workspace folder. |
 | `Cmd/Ctrl+R` | Reload the current workspace from disk. |
+| `Cmd/Ctrl+=` | Zoom in. |
+| `Cmd/Ctrl+-` | Zoom out. |
+| `Cmd/Ctrl+0` | Reset zoom. |
 | `Esc` | Close the active modal. If search is focused, clear search. Otherwise blur the active control. |
 
 ## Navigation

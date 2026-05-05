@@ -8,7 +8,7 @@ import type {
 } from "../types";
 
 export type NavId = "home" | "tickets" | "memory" | "context";
-export type InspectorMode = "ticket" | "prompt" | "assistant" | "thread" | "note";
+export type InspectorMode = "ticket" | "prompt" | "assistant" | "thread" | "note" | "context";
 export type Lane = "now" | "next" | "later" | "blocked" | "done";
 export type CaptureKind = "ticket" | "idea" | "decision" | "thread";
 export type FileModalMode = "file" | "link";
@@ -67,6 +67,11 @@ export const LEFT_WIDTH_MIN = 188;
 export const LEFT_WIDTH_MAX = 360;
 export const RIGHT_WIDTH_MIN = 300;
 export const RIGHT_WIDTH_MAX = 560;
+export const VIEW_ZOOM_KEY = "waymark:view-zoom";
+export const VIEW_ZOOM_DEFAULT = 1;
+export const VIEW_ZOOM_MIN = 0.8;
+export const VIEW_ZOOM_MAX = 1.4;
+export const VIEW_ZOOM_STEP = 0.1;
 
 /* -------------------------------- utils --------------------------------- */
 
