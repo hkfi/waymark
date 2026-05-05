@@ -2,7 +2,7 @@ import { useCallback, useMemo } from "react";
 import { isTauri } from "../../tauri";
 import type { LinkRecord, RepoRef, ThreadRecord, Ticket, TicketStatus, WaymarkProject } from "../../types";
 import {
-  addRepoToProject,
+  addReposToProject,
   buildPrompt,
   createNote,
   saveGeneratedPrompts,
@@ -10,6 +10,7 @@ import {
   saveThreads,
   saveTickets,
 } from "../../workspace";
+import type { RepoInstructionDraft } from "../../workspace";
 import { LANE_LABEL, lines, recordId, type CapturePayload, type InspectorMode, type Lane } from "../model";
 
 type ProjectActionDeps = {
@@ -273,7 +274,7 @@ export function useProjectActions({
   );
 
   const onboardRepo = useCallback(
-    async (repo: RepoRef) => {
+    async (repos: RepoRef[], instructionDrafts: RepoInstructionDraft[] = []) => {
       if (!project) return;
       if (!isTauri()) {
         setNotice("Run Waymark through Tauri to onboard local repos.");
@@ -281,11 +282,14 @@ export function useProjectActions({
       }
 
       try {
-        const saved = await addRepoToProject(project, repo);
+        const saved = await addReposToProject(project, repos, instructionDrafts);
         const scaffoldText = saved.scaffolded.length
           ? ` Created ${saved.scaffolded.length} missing scaffold item${saved.scaffolded.length === 1 ? "" : "s"}.`
           : "";
-        setNotice(`Onboarded ${saved.repo.name}.${scaffoldText}`);
+        const repoFileText = saved.writtenRepoFiles.length
+          ? ` Wrote ${saved.writtenRepoFiles.length} repo instruction file${saved.writtenRepoFiles.length === 1 ? "" : "s"}.`
+          : "";
+        setNotice(`Onboarded ${saved.repos.length} repo${saved.repos.length === 1 ? "" : "s"}.${scaffoldText}${repoFileText}`);
         closeRepoOnboarding();
         await refresh();
       } catch (caught) {

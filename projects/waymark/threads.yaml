@@ -7,3 +7,10 @@ threads:
     summary_file: ai/thread-summaries/2026-05-05-assistant-verification.md
     linked_tickets:
       - codex-backed-assistant
+  - id: guided-repo-onboarding-2026-05-05
+    provider: codex
+    title: Guided repo onboarding implementation
+    status: active
+    summary_file: ai/thread-summaries/2026-05-05-guided-repo-onboarding.md
+    linked_tickets:
+      - guided-repo-onboarding

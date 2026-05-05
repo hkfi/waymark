@@ -88,6 +88,15 @@ export type ProjectScaffoldItem = {
   kind: "file" | "directory";
 };
 
+export type RepoInstructionDraft = {
+  repoId: string;
+  repoName: string;
+  repoPath: string;
+  path: string;
+  exists: boolean;
+  contents: string;
+};
+
 const PROJECT_SCAFFOLD_ITEMS: ProjectScaffoldItem[] = [
   { label: "tickets.yaml", path: "tickets.yaml", kind: "file" },
   { label: "links.yaml", path: "links.yaml", kind: "file" },
@@ -570,30 +579,104 @@ export async function ensureProjectScaffold(project: WaymarkProject) {
 }
 
 export async function addRepoToProject(project: WaymarkProject, repo: RepoRef) {
+  const saved = await addReposToProject(project, [repo], []);
+  return { repo: saved.repos[0], scaffolded: saved.scaffolded };
+}
+
+export async function addReposToProject(
+  project: WaymarkProject,
+  reposToAdd: RepoRef[],
+  instructionDrafts: RepoInstructionDraft[] = [],
+) {
   const repos = project.config.repos ?? [];
-  const cleanPath = repo.path ? normalizeRepoPath(repo.path) : undefined;
-  const cleanUrl = repo.url?.trim();
-  if (!repo.name.trim()) throw new Error("Repo name is required.");
-  if (!cleanPath && !cleanUrl) throw new Error("Repo path or URL is required.");
-  if (cleanUrl && !/^https?:\/\//.test(cleanUrl)) {
-    throw new Error("Repo URL must start with http:// or https://.");
-  }
-  if (cleanPath && repos.some((candidate) => candidate.path && normalizeRepoPath(candidate.path) === cleanPath)) {
-    throw new Error("This repo path is already linked to the project.");
+  const nextRepos = [...repos];
+  const savedRepos: RepoRef[] = [];
+  const seenPaths = new Set(
+    repos
+      .map((repo) => (repo.path ? normalizeRepoPath(repo.path) : null))
+      .filter((path): path is string => Boolean(path)),
+  );
+
+  for (const repo of reposToAdd) {
+    const cleanPath = repo.path ? normalizeRepoPath(repo.path) : undefined;
+    const cleanUrl = repo.url?.trim();
+    if (!repo.name.trim()) throw new Error("Repo name is required.");
+    if (!cleanPath && !cleanUrl) throw new Error("Repo path or URL is required.");
+    if (cleanUrl && !/^https?:\/\//.test(cleanUrl)) {
+      throw new Error("Repo URL must start with http:// or https://.");
+    }
+    if (cleanPath && seenPaths.has(cleanPath)) {
+      throw new Error(`Repo path is already linked to the project: ${cleanPath}`);
+    }
+
+    const cleanRepo: RepoRef = {
+      id: uniqueRepoId(repo.id || repo.name || basename(cleanPath ?? cleanUrl ?? "repo"), nextRepos),
+      name: repo.name.trim(),
+      ...(cleanPath ? { path: cleanPath } : {}),
+      ...(cleanUrl ? { url: cleanUrl } : {}),
+    };
+
+    if (cleanPath) seenPaths.add(cleanPath);
+    nextRepos.push(cleanRepo);
+    savedRepos.push(cleanRepo);
   }
 
-  const cleanRepo: RepoRef = {
-    id: uniqueRepoId(repo.id || repo.name || basename(cleanPath ?? cleanUrl ?? "repo"), repos),
-    name: repo.name.trim(),
-    ...(cleanPath ? { path: cleanPath } : {}),
-    ...(cleanUrl ? { url: cleanUrl } : {}),
-  };
   const scaffolded = await ensureProjectScaffold(project);
   await saveProjectConfig(project, {
     ...project.config,
-    repos: [...repos, cleanRepo],
+    repos: nextRepos,
   });
-  return { repo: cleanRepo, scaffolded };
+
+  const writtenRepoFiles: RepoInstructionDraft[] = [];
+  for (const draft of instructionDrafts) {
+    if (draft.exists) continue;
+    if (!savedRepos.some((repo) => repo.id === draft.repoId)) continue;
+    await writeTextFile(draft.path, draft.contents);
+    writtenRepoFiles.push(draft);
+  }
+
+  return { repos: savedRepos, scaffolded, writtenRepoFiles };
+}
+
+export async function buildRepoInstructionDraft(project: WaymarkProject, repo: RepoRef): Promise<RepoInstructionDraft | null> {
+  const cleanPath = repo.path ? normalizeRepoPath(repo.path) : undefined;
+  if (!cleanPath) return null;
+
+  const path = joinPath(cleanPath, "AGENTS.md");
+  const exists = await pathExists(path);
+  const contents = `# AGENTS.md
+
+This repository is linked from the Waymark project "${project.config.name}".
+
+## Waymark Context
+
+- Project: ${project.config.name}
+- Summary: ${project.config.summary}
+- Current focus: ${project.config.current_focus || "Not set"}
+- Repo id: ${repo.id}
+- Repo name: ${repo.name}
+
+## Agent Workflow
+
+1. Read this repo's local instructions first.
+2. Check the Waymark workspace for current tickets, decisions, thread references, and generated handoff prompts before starting broad work.
+3. Keep changes local-first and easy to inspect in Git.
+4. Do not silently rewrite Waymark project memory. Record project state changes through Waymark's review-gated Markdown/YAML workflows.
+`;
+
+  return {
+    repoId: repo.id,
+    repoName: repo.name,
+    repoPath: cleanPath,
+    path,
+    exists,
+    contents,
+  };
+}
+
+export async function buildRepoInstructionDrafts(project: WaymarkProject, repos: RepoRef[]) {
+  const drafts = await Promise.all(repos.map((repo) => buildRepoInstructionDraft(project, repo)));
+  return drafts.filter((draft): draft is RepoInstructionDraft => Boolean(draft));
 }
 
 export async function saveTickets(project: WaymarkProject, tickets: Ticket[]) {

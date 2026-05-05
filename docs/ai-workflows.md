@@ -81,6 +81,8 @@ The intended loop:
 5. User reviews, edits, and accepts the proposed project summary, tickets, decisions, thread references, repo instructions, or handoff context.
 6. Waymark writes only the accepted files or records through its controlled write helpers.
 
+During MVP, the deterministic onboarding path is the default: users can queue one or more local repo folders, preview the `project.yaml` repo entries, preview any missing Waymark scaffold files, and optionally accept small generated `AGENTS.md` repo-instruction drafts. Existing repo instruction files are not overwritten. Codex-generated onboarding records remain an optional Assistant workflow and should only run after the user explicitly confirms sending selected project context through the local Codex connection.
+
 Repo onboarding should:
 
 - keep Markdown/YAML as the canonical project memory
@@ -88,6 +90,7 @@ Repo onboarding should:
 - distinguish Waymark workspace files from files that would be written into a linked repo
 - show what will be written before any project memory or repo context file changes
 - work without Codex by offering manual forms and deterministic scaffolds
+- avoid overwriting existing repo instruction files unless a future explicit edit workflow previews the replacement
 
 Repo onboarding should not:
 

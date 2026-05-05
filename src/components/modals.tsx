@@ -1,8 +1,8 @@
-import { AlertTriangle, Check, FolderOpen, Plus, RefreshCw, Sparkles, Triangle } from "lucide-react";
+import { AlertTriangle, Check, FileText, FolderOpen, Plus, RefreshCw, Sparkles, Trash2, Triangle } from "lucide-react";
 import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { LinkRecord, Priority, ProjectConfig, ProjectStage, ProjectStatus, RepoRef, ThreadRecord, Ticket, TicketStatus, WaymarkProject, WorkspaceData } from "../types";
 import { lines, recordId, type CaptureKind, type CapturePayload, type FileModalMode } from "../app/model";
-import { missingProjectScaffold, type ProjectScaffoldItem } from "../workspace";
+import { buildRepoInstructionDrafts, missingProjectScaffold, type ProjectScaffoldItem, type RepoInstructionDraft } from "../workspace";
 import { Btn, CommandShortcutBadge, cx, Notice } from "./primitives";
 
 export function EmptyState({
@@ -347,19 +347,23 @@ export function RepoOnboardingModal({
   project: WaymarkProject;
   onClose: () => void;
   onChooseRepo: () => Promise<string | null>;
-  onAddRepo: (repo: RepoRef) => Promise<void>;
+  onAddRepo: (repos: RepoRef[], instructionDrafts: RepoInstructionDraft[]) => Promise<void>;
 }) {
   const [repoPath, setRepoPath] = useState("");
   const [repoName, setRepoName] = useState("");
   const [repoUrl, setRepoUrl] = useState("");
   const [repoNameEdited, setRepoNameEdited] = useState(false);
+  const [repos, setRepos] = useState<RepoRef[]>([]);
   const [scaffold, setScaffold] = useState<ProjectScaffoldItem[]>([]);
+  const [instructionDrafts, setInstructionDrafts] = useState<RepoInstructionDraft[]>([]);
+  const [selectedInstructionDrafts, setSelectedInstructionDrafts] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const cleanPath = trimPath(repoPath);
   const derivedName = repoName.trim() || titleFromPath(cleanPath);
-  const derivedId = uniqueRepoId(recordId(derivedName || "repo"), project.config.repos ?? []);
-  const duplicatePath = Boolean(cleanPath && (project.config.repos ?? []).some((repo) => repo.path && trimPath(repo.path) === cleanPath));
+  const existingAndQueued = [...(project.config.repos ?? []), ...repos];
+  const derivedId = uniqueRepoId(recordId(derivedName || "repo"), existingAndQueued);
+  const duplicatePath = Boolean(cleanPath && existingAndQueued.some((repo) => repo.path && trimPath(repo.path) === cleanPath));
   const previewRepo: RepoRef = {
     id: derivedId,
     name: derivedName || "Repository",
@@ -382,6 +386,33 @@ export function RepoOnboardingModal({
     };
   }, [project, tauri]);
 
+  useEffect(() => {
+    if (!tauri || repos.length === 0) {
+      setInstructionDrafts([]);
+      setSelectedInstructionDrafts({});
+      return;
+    }
+    let cancelled = false;
+    buildRepoInstructionDrafts(project, repos)
+      .then((drafts) => {
+        if (cancelled) return;
+        setInstructionDrafts(drafts);
+        setSelectedInstructionDrafts((current) => {
+          const next: Record<string, boolean> = {};
+          for (const draft of drafts) {
+            next[draft.path] = current[draft.path] ?? !draft.exists;
+          }
+          return next;
+        });
+      })
+      .catch((caught) => {
+        if (!cancelled) setError(caught instanceof Error ? caught.message : String(caught));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [project, repos, tauri]);
+
   async function chooseRepo() {
     setError(null);
     try {
@@ -394,43 +425,66 @@ export function RepoOnboardingModal({
     }
   }
 
+  function addRepoToReview() {
+    if (!cleanPath) {
+      setError("Choose a local repo folder.");
+      return;
+    }
+    if (!derivedName.trim()) {
+      setError("Repo name is required.");
+      return;
+    }
+    if (duplicatePath) {
+      setError("This repo path is already linked or queued for this project.");
+      return;
+    }
+    if (repoUrl.trim() && !/^https?:\/\//.test(repoUrl.trim())) {
+      setError("Repo URL must start with http:// or https://.");
+      return;
+    }
+
+    setRepos((current) => [...current, previewRepo]);
+    setRepoPath("");
+    setRepoName("");
+    setRepoUrl("");
+    setRepoNameEdited(false);
+    setError(null);
+  }
+
+  function removeRepo(repoId: string) {
+    setRepos((current) => current.filter((repo) => repo.id !== repoId));
+  }
+
+  async function saveOnboarding() {
+    if (repos.length === 0) {
+      setError("Add at least one repo to the review list.");
+      return;
+    }
+
+    const selectedDrafts = instructionDrafts.filter((draft) => selectedInstructionDrafts[draft.path] && !draft.exists);
+    setBusy(true);
+    setError(null);
+    try {
+      await onAddRepo(repos, selectedDrafts);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <ModalFrame title={`Onboard repo into ${project.config.name}`} onClose={onClose}>
       <form
         onKeyDown={submitOnCommandEnter}
         onSubmit={async (event) => {
           event.preventDefault();
-          if (!cleanPath) {
-            setError("Choose a local repo folder.");
-            return;
-          }
-          if (!derivedName.trim()) {
-            setError("Repo name is required.");
-            return;
-          }
-          if (duplicatePath) {
-            setError("This repo path is already linked to the project.");
-            return;
-          }
-          if (repoUrl.trim() && !/^https?:\/\//.test(repoUrl.trim())) {
-            setError("Repo URL must start with http:// or https://.");
-            return;
-          }
-
-          setBusy(true);
-          setError(null);
-          try {
-            await onAddRepo(previewRepo);
-          } catch (caught) {
-            setError(caught instanceof Error ? caught.message : String(caught));
-          } finally {
-            setBusy(false);
-          }
+          addRepoToReview();
         }}
         className="flex flex-col gap-3"
       >
         <p className="m-0 text-[12.5px] leading-[1.55] text-ink-faint">
-          Add a local repository reference and create any missing Waymark project-memory scaffold files after review.
+          Add one or more local repository references, review Waymark scaffold writes, and optionally write repo instruction drafts.
         </p>
         <div>
           <FieldLabel>Repo folder</FieldLabel>
@@ -468,12 +522,31 @@ export function RepoOnboardingModal({
             <input value={repoUrl} onChange={(event) => setRepoUrl(event.target.value)} placeholder="https://github.com/..." className={cx(inputClass, "mt-1")} />
           </div>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="flex justify-end">
+          <Btn type="submit" disabled={!tauri || !cleanPath || duplicatePath}>
+            <Plus size={11} /> Add to review
+          </Btn>
+        </div>
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
           <div>
-            <FieldLabel>project.yaml repo entry</FieldLabel>
-            <pre className="mt-1 max-h-[150px] overflow-auto rounded-[4px] border border-line-soft bg-surface-1 p-2 text-[11px] leading-[1.45] text-ink-soft font-mono whitespace-pre-wrap">
-{repoPreview(previewRepo)}
-            </pre>
+            <FieldLabel>Waymark workspace writes</FieldLabel>
+            <div className="mt-1 rounded-[4px] border border-line-soft bg-surface-1 p-2 min-h-[132px]">
+              <div className="text-[11.5px] text-ink-soft mb-2">
+                {repos.length ? `${repos.length} repo entr${repos.length === 1 ? "y" : "ies"} will be added to project.yaml.` : "No repo entries queued yet."}
+              </div>
+              {repos.length ? (
+                <div className="grid gap-2">
+                  {repos.map((repo) => (
+                    <div key={repo.id} className="grid grid-cols-[1fr_auto] gap-2 items-start rounded-[3px] border border-line-soft bg-surface-input-2 p-2">
+                      <pre className="m-0 overflow-auto text-[10.5px] leading-[1.45] text-ink-soft font-mono whitespace-pre-wrap">{repoPreview(repo)}</pre>
+                      <button type="button" onClick={() => removeRepo(repo.id)} className="text-ink-mute hover:text-danger" title="Remove repo">
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
           </div>
           <div>
             <FieldLabel>Missing memory scaffold</FieldLabel>
@@ -490,6 +563,44 @@ export function RepoOnboardingModal({
             </div>
           </div>
         </div>
+        <div>
+          <FieldLabel>Linked repo instruction drafts</FieldLabel>
+          <div className="mt-1 rounded-[4px] border border-line-soft bg-surface-1 p-2 min-h-[96px]">
+            {instructionDrafts.length ? (
+              <div className="grid gap-2">
+                {instructionDrafts.map((draft) => {
+                  const selected = Boolean(selectedInstructionDrafts[draft.path]) && !draft.exists;
+                  return (
+                    <div key={draft.path} className="rounded-[3px] border border-line-soft bg-surface-input-2 p-2">
+                      <div className="flex items-center gap-2 mb-2">
+                        <label className={cx("inline-flex items-center gap-1.5 text-[11.5px]", draft.exists ? "text-ink-mute" : "text-ink-soft")}>
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            disabled={draft.exists}
+                            onChange={(event) => setSelectedInstructionDrafts((current) => ({ ...current, [draft.path]: event.target.checked }))}
+                          />
+                          <FileText size={12} />
+                          {draft.exists ? "Existing AGENTS.md will not be overwritten" : "Write AGENTS.md"}
+                        </label>
+                        <span className="ml-auto min-w-0 truncate font-mono text-[10.5px] text-ink-mute" title={draft.path}>
+                          {compactPath(draft.path)}
+                        </span>
+                      </div>
+                      <pre className="m-0 max-h-[132px] overflow-auto whitespace-pre-wrap rounded-[3px] border border-line-soft bg-surface-2 p-2 text-[10.5px] leading-[1.45] text-ink-faint font-mono">
+{draft.contents}
+                      </pre>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 text-[11.5px] text-ink-faint">
+                <FileText size={12} /> Add a local repo path to preview optional repo instruction files.
+              </div>
+            )}
+          </div>
+        </div>
         {!tauri ? (
           <Notice tone="warn">
             <AlertTriangle size={13} /> Repo onboarding writes local files, so it is only enabled in Tauri.
@@ -497,14 +608,14 @@ export function RepoOnboardingModal({
         ) : null}
         {duplicatePath ? (
           <Notice tone="warn">
-            <AlertTriangle size={13} /> This repo path is already linked to the project.
+            <AlertTriangle size={13} /> This repo path is already linked or queued for this project.
           </Notice>
         ) : null}
         {error ? <Notice tone="err"><AlertTriangle size={13} /> {error}</Notice> : null}
         <div className="flex gap-2 justify-end">
           <Btn type="button" variant="ghost" onClick={onClose}>Cancel</Btn>
-          <Btn type="submit" variant="primary" disabled={!tauri || busy || !cleanPath || duplicatePath}>
-            <Plus size={11} /> Save repo
+          <Btn type="button" variant="primary" onClick={saveOnboarding} disabled={!tauri || busy || repos.length === 0}>
+            <Plus size={11} /> Save onboarding
           </Btn>
         </div>
       </form>

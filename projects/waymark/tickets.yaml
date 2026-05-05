@@ -99,11 +99,13 @@ tickets:
       - docs/mvp-boundaries.md
       - docs/ai-workflows.md
       - src/workspace.ts
+      - src/app/hooks/useProjectActions.ts
       - src/components/modals.tsx
       - src/components/assistant.tsx
     linked_decisions:
       - guided-repo-onboarding
-    linked_threads: []
+    linked_threads:
+      - guided-repo-onboarding-2026-05-05
     generated_prompts: []
   - id: signed-github-release-updater
     title: Signed GitHub Release updater
