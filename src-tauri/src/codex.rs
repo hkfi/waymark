@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::env;
+use std::ffi::OsString;
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
@@ -566,27 +567,13 @@ fn run_codex_exec(request: CodexRunRequest, route: &str) -> Result<CodexRunResul
         .transpose()?;
 
     let mut command = Command::new(codex);
-    command
-        .arg("exec")
-        .arg("--ephemeral")
-        .arg("--sandbox")
-        .arg("read-only")
-        .arg("--ask-for-approval")
-        .arg("never")
-        .arg("--cd")
-        .arg(cwd)
-        .arg("--output-last-message")
-        .arg(&out_path);
-
-    if let Some(path) = &schema_path {
-        command.arg("--output-schema").arg(path);
-    }
-    command.args(codex_config_args(
+    command.args(codex_exec_args(
+        &cwd,
+        &out_path,
+        schema_path.as_deref(),
         request.model.as_deref(),
         request.model_reasoning_effort.as_deref(),
     ));
-
-    command.arg("-");
     command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -693,6 +680,40 @@ fn codex_config_args(model: Option<&str>, model_reasoning_effort: Option<&str>) 
         args.push("--config".to_string());
         args.push(toml_config_arg("model_reasoning_effort", effort));
     }
+    args
+}
+
+fn codex_exec_args(
+    cwd: &str,
+    out_path: &Path,
+    schema_path: Option<&Path>,
+    model: Option<&str>,
+    model_reasoning_effort: Option<&str>,
+) -> Vec<OsString> {
+    let mut args = vec![
+        "--ask-for-approval".into(),
+        "never".into(),
+        "exec".into(),
+        "--ephemeral".into(),
+        "--sandbox".into(),
+        "read-only".into(),
+        "--cd".into(),
+        cwd.into(),
+        "--output-last-message".into(),
+        out_path.into(),
+    ];
+
+    if let Some(path) = schema_path {
+        args.push("--output-schema".into());
+        args.push(path.into());
+    }
+
+    args.extend(
+        codex_config_args(model, model_reasoning_effort)
+            .into_iter()
+            .map(OsString::from),
+    );
+    args.push("-".into());
     args
 }
 
@@ -908,5 +929,35 @@ mod tests {
             Some(json!({ "type": "object" }))
         );
         assert!(parse_output_schema(Some(&"not-json".to_string())).is_err());
+    }
+
+    #[test]
+    fn builds_exec_args_with_top_level_approval_policy() {
+        let args = codex_exec_args(
+            "/tmp/waymark",
+            Path::new("/tmp/waymark-output.md"),
+            Some(Path::new("/tmp/waymark-schema.json")),
+            Some("gpt-5.5"),
+            Some("high"),
+        )
+        .into_iter()
+        .map(|arg| arg.to_string_lossy().to_string())
+        .collect::<Vec<_>>();
+
+        let approval_index = args
+            .iter()
+            .position(|arg| arg == "--ask-for-approval")
+            .unwrap();
+        let exec_index = args.iter().position(|arg| arg == "exec").unwrap();
+
+        assert!(approval_index < exec_index);
+        assert_eq!(args[approval_index + 1], "never");
+        assert!(args.windows(2).any(|pair| pair == ["--sandbox", "read-only"]));
+        assert!(args
+            .windows(2)
+            .any(|pair| pair == ["--output-schema", "/tmp/waymark-schema.json"]));
+        assert!(args.contains(&r#"model="gpt-5.5""#.to_string()));
+        assert!(args.contains(&r#"model_reasoning_effort="high""#.to_string()));
+        assert_eq!(args.last().map(String::as_str), Some("-"));
     }
 }

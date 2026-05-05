@@ -1,2 +1,9 @@
 version: 1
-threads: []
+threads:
+  - id: assistant-verification-2026-05-05
+    provider: codex
+    title: Assistant verification pass
+    status: active
+    summary_file: ai/thread-summaries/2026-05-05-assistant-verification.md
+    linked_tickets:
+      - codex-backed-assistant

@@ -77,7 +77,8 @@ tickets:
       - docs/mvp-boundaries.md
     linked_decisions:
       - codex-subscription-connector
-    linked_threads: []
+    linked_threads:
+      - assistant-verification-2026-05-05
     generated_prompts: []
   - id: guided-repo-onboarding
     title: Guided repo onboarding
