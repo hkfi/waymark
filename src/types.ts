@@ -120,6 +120,7 @@ export interface WaymarkAssistantMessage {
 }
 
 export interface DraftTicket {
+  id?: string;
   title: string;
   status: TicketStatus;
   priority?: Priority;

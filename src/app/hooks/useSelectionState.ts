@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { AssistantLaunchInput, AssistantLaunchRequest } from "../../assistant";
 import { contextRowKey, contextRows, type ContextRow } from "../../contextRows";
 import type { NoteRecord, ThreadRecord, Ticket, WaymarkProject } from "../../types";
 import type { InspectorMode } from "../model";
+
+let assistantLaunchCounter = 0;
+
+function nextAssistantLaunchId() {
+  assistantLaunchCounter += 1;
+  return `assistant-launch-${assistantLaunchCounter}`;
+}
 
 export function useSelectionState(project: WaymarkProject | null) {
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
@@ -11,6 +19,7 @@ export function useSelectionState(project: WaymarkProject | null) {
   const [multi, setMulti] = useState<string[]>([]);
   const [inspectorMode, setInspectorMode] = useState<InspectorMode>("ticket");
   const [editingTicketId, setEditingTicketId] = useState<string | null>(null);
+  const [assistantLaunchRequest, setAssistantLaunchRequest] = useState<AssistantLaunchRequest | null>(null);
 
   const selectedTicket = useMemo(() => {
     if (!project) return null;
@@ -44,6 +53,7 @@ export function useSelectionState(project: WaymarkProject | null) {
       setSelectedNotePath(null);
       setSelectedContextKey(null);
       setMulti([]);
+      setAssistantLaunchRequest(null);
       return;
     }
 
@@ -96,6 +106,17 @@ export function useSelectionState(project: WaymarkProject | null) {
     setEditingTicketId(null);
   }, []);
 
+  const openAssistant = useCallback((request?: AssistantLaunchInput) => {
+    if (request) {
+      setAssistantLaunchRequest({ ...request, id: nextAssistantLaunchId() });
+    }
+    setInspectorMode("assistant");
+  }, []);
+
+  const clearAssistantLaunchRequest = useCallback(() => {
+    setAssistantLaunchRequest(null);
+  }, []);
+
   const toggleMulti = useCallback((id: string) => {
     setMulti((current) =>
       current.includes(id) ? current.filter((value) => value !== id) : [...current, id],
@@ -111,6 +132,7 @@ export function useSelectionState(project: WaymarkProject | null) {
       selectedContext,
       selectedContextKey,
       editingTicket,
+      assistantLaunchRequest,
       multi,
       inspectorMode,
       selectTicket,
@@ -120,10 +142,14 @@ export function useSelectionState(project: WaymarkProject | null) {
       setInspectorMode,
       editTicket,
       clearEditingTicket,
+      openAssistant,
+      clearAssistantLaunchRequest,
       toggleMulti,
     }),
     [
+      assistantLaunchRequest,
       clearEditingTicket,
+      clearAssistantLaunchRequest,
       editTicket,
       editingTicket,
       inspectorMode,
@@ -138,6 +164,7 @@ export function useSelectionState(project: WaymarkProject | null) {
       selectedThread,
       selectedTicket,
       selectedTicketId,
+      openAssistant,
       toggleMulti,
     ],
   );

@@ -40,12 +40,12 @@ The intended loop:
 
 The Assistant drawer is an explicitly promoted AI surface for project-memory brainstorming. It is available from every cockpit view and uses the selected project plus current ticket, thread, note, or handoff bundle as context after the user confirms the Codex notice. It uses the user's local Codex installation and Codex auth; Waymark does not read or store Codex credentials.
 
-The Assistant connection panel should separate connection state from connection actions. When local auth is ready, the UI should read as connected and offer a switch-account action rather than implying the user still needs to connect. Codex and ChatGPT should not appear as separate account choices here; Waymark uses the local Codex runtime as the OpenAI account connection. The panel exposes route, model, and reasoning controls; the default is `Latest` model with `High` reasoning. `Latest` means Waymark does not pin a model override and lets the local Codex runtime use its current latest/default model.
+The Assistant connection panel should separate connection state from connection actions. When local auth is ready, the UI should read as connected and offer a switch-account action rather than implying the user still needs to connect. Codex and ChatGPT should not appear as separate account choices here; Waymark uses the local Codex runtime as the OpenAI account connection. Route, model, reasoning, import, and account controls should live behind Advanced controls so the default Assistant surface stays focused on the current action, context notice, prompt, result, and draft review. The default is `Latest` model with `High` reasoning. `Latest` means Waymark does not pin a model override and lets the local Codex runtime use its current latest/default model.
 
 The intended loop:
 
 1. User opens a project and opens Assistant from the header, right drawer, or shortcut.
-2. Waymark shows Codex availability, route, model, and reasoning settings, then asks for confirmation before sending selected project context and the user's prompt.
+2. Waymark shows Codex availability and asks for session-scoped confirmation before sending selected project context and the user's prompt.
 3. User brainstorms, asks Codex to structure the prompt, or pastes external Codex output for local parsing.
 4. Codex returns streamed assistant text through a local app-server thread, or Waymark falls back to one-shot CLI execution.
 5. Waymark validates draft IDs against the current project and turns invalid references into warnings.
@@ -63,6 +63,8 @@ As a project matures, Waymark should use the accumulated project memory to make 
 Meaningful project-memory fields may offer contextual Codex recommendations. Good targets include ticket summaries, acceptance criteria, idea notes, decision drafts, thread summaries, handoff prompt sections, project focus, and repo onboarding summaries. Mechanical fields such as IDs, slugs, file paths, URLs, and tags should stay quiet by default; Codex may suggest values during a review flow, but the UI should not make every small input feel like an AI prompt box.
 
 Accepted records should preserve provenance when practical. If a ticket, decision, idea, or summary came from a Codex conversation, Waymark should let the user link it to a saved thread reference or summary so future handoffs can understand where the rationale came from without assuming Waymark can read private Codex history.
+
+Contextual recommendation buttons should use explicit action labels such as improving a summary, drafting checks, suggesting next steps, or turning a note into records. AI-related setup, navigation, and prompt-fill controls should use a cyan-blue treatment and must not contact Codex by themselves. Controls that actually send selected project context to Codex and consume tokens should use a distinct run treatment. Contextual actions should open Assistant with a prepared prompt; the user invokes Codex with one clear `Send to Codex` or `Run Codex` action after seeing the context notice. No files are written until drafts are reviewed and saved.
 
 Contextual recommendations should:
 
@@ -84,6 +86,7 @@ Assistant outputs should:
 - propose project-memory records, not directly edit files
 - use an ephemeral read-only Codex thread with approval policy set to never
 - apply the selected model and reasoning settings to both app-server and CLI routes
+- emit ticket draft `id` values as existing ticket IDs only when updating those tickets; new ticket drafts should use an empty `id`
 - keep tickets, ideas, decisions, and threads small enough to review
 - save thread summaries under `ai/thread-summaries/` only when the user accepts them
 - prefer concise summaries over full transcript persistence

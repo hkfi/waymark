@@ -4,6 +4,8 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 import {
   WAYMARK_DRAFT_JSON_SCHEMA,
   type AssistantContextSelection,
+  type AssistantLaunchRequest,
+  type AssistantMode,
   buildAssistantPrompt,
   emptyDraftSet,
   normalizeNoteDraft,
@@ -17,7 +19,6 @@ import { createNote, saveThreadSummary, saveThreads, saveTickets } from "../work
 import { lines, recordId } from "../app/model";
 import { Btn, Card, Notice, cx } from "./primitives";
 
-type AssistantMode = "brainstorm" | "structure" | "capture";
 type AssistantModelChoice = "latest" | "gpt-5.5" | "gpt-5.4" | "gpt-5.4-mini";
 type AssistantReasoningEffort = "low" | "medium" | "high" | "xhigh";
 type AssistantMessage = {
@@ -32,13 +33,39 @@ type CodexAssistantDelta = {
   delta: string;
 };
 
+let assistantContextConsentGranted = false;
+const DEFAULT_ACTION_LABEL = "Ask Codex";
+const DEFAULT_ACTION_EXPLANATION = "Chat with Codex using the current project and selection, then save reviewed Waymark drafts.";
+const DRAFT_ACTION_EXPLANATION = "Ask Codex to propose editable tickets, ideas, decisions, or thread references from your prompt.";
+
+function InlineTooltip({
+  tooltip,
+  className,
+  children,
+}: {
+  tooltip: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <span className={cx("inline-tooltip", className)}>
+      {children}
+      <span aria-hidden="true" className="inline-tooltip-bubble">{tooltip}</span>
+    </span>
+  );
+}
+
 export function AssistantView({
   project,
   selection,
+  launchRequest,
+  onLaunchConsumed,
   onSaved,
 }: {
   project: WaymarkProject;
   selection?: AssistantContextSelection;
+  launchRequest?: AssistantLaunchRequest | null;
+  onLaunchConsumed?: () => void;
   onSaved: () => Promise<void>;
 }) {
   const [status, setStatus] = useState<CodexStatus>({ state: "unavailable", path: null, detail: "Not checked yet." });
@@ -51,11 +78,14 @@ export function AssistantView({
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
   const [drafts, setDrafts] = useState<WaymarkDraftSet>(emptyDraftSet("codex"));
   const [selected, setSelected] = useState<Record<string, boolean>>({});
-  const [ack, setAck] = useState(false);
+  const [ack, setAck] = useState(assistantContextConsentGranted);
   const [busy, setBusy] = useState(false);
   const [checkingCodex, setCheckingCodex] = useState(false);
   const [modelSettingsOpen, setModelSettingsOpen] = useState(false);
   const [codexCheckFeedback, setCodexCheckFeedback] = useState<string | null>(null);
+  const [activeActionLabel, setActiveActionLabel] = useState(DEFAULT_ACTION_LABEL);
+  const [activeExplanation, setActiveExplanation] = useState(DEFAULT_ACTION_EXPLANATION);
+  const [pendingAutoRunId, setPendingAutoRunId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const activeStreamRef = useRef<string | null>(null);
@@ -99,6 +129,19 @@ export function AssistantView({
   }, [messages, busy]);
 
   useEffect(() => {
+    if (!launchRequest) return;
+    setMode(launchRequest.mode);
+    setPrompt(launchRequest.prompt);
+    setPasted("");
+    setError(null);
+    setActiveActionLabel(launchRequest.actionLabel ?? (launchRequest.mode === "structure" ? "Draft records" : DEFAULT_ACTION_LABEL));
+    setActiveExplanation(launchRequest.explanation ?? (launchRequest.mode === "structure" ? DRAFT_ACTION_EXPLANATION : DEFAULT_ACTION_EXPLANATION));
+    setPendingAutoRunId(launchRequest.autoRun ? launchRequest.id : null);
+    setNotice(launchRequest.notice ?? "Loaded contextual Codex recommendation prompt.");
+    onLaunchConsumed?.();
+  }, [launchRequest, onLaunchConsumed]);
+
+  useEffect(() => {
     if (!isTauri()) return;
     let disposed = false;
     let unlisten: (() => void) | undefined;
@@ -120,12 +163,21 @@ export function AssistantView({
     };
   }, []);
 
-  const canSend = isTauri() && status.state === "ready" && ack && !busy;
+  const canContactCodex = isTauri() && status.state === "ready" && !busy;
   const draftCount = drafts.tickets.length + drafts.ideas.length + drafts.decisions.length + drafts.threads.length;
   const selectedDraftCount = Object.values(selected).filter(Boolean).length;
-  const primaryDisabled = busy || (mode === "capture" ? !pasted.trim() : !canSend || !prompt.trim());
-  const primaryLabel = mode === "brainstorm" ? "Send message" : mode === "structure" ? "Generate drafts" : "Import drafts";
-  const primaryIcon = mode === "structure" ? <WandSparkles size={11} /> : mode === "capture" ? <FileInput size={11} /> : <Send size={11} />;
+  const primaryDisabled = busy || (mode === "capture" ? !pasted.trim() : !canContactCodex || !prompt.trim());
+  const primaryLabel = mode === "capture"
+    ? "Import drafts"
+    : !ack
+      ? "Send to Codex"
+      : "Run Codex";
+  const primaryIcon = mode === "capture" ? <FileInput size={11} /> : mode === "structure" || !ack ? <WandSparkles size={11} /> : <Send size={11} />;
+  const primaryTooltip = mode === "capture"
+    ? "Parse pasted draft JSON locally without contacting Codex."
+    : mode === "structure"
+      ? "Send this prompt and selected project context to Codex to generate reviewable drafts."
+      : "Send this prompt and selected project context to Codex.";
   const connectionActionLabel = status.state === "ready" ? "Switch account" : "Connect";
   const selectedModel = model === "latest" ? null : model;
   const codexSettingsKey = `${project.rootPath}:${selectedModel ?? "latest"}:${reasoningEffort}`;
@@ -168,15 +220,39 @@ Do not draft repo context files, AGENTS.md, or instructions to write into the li
     }
   }
 
-  async function runAssistant(nextMode: AssistantMode) {
+  function grantContextConsent() {
+    assistantContextConsentGranted = true;
+    setAck(true);
+  }
+
+  function setManualMode(nextMode: AssistantMode) {
+    setMode(nextMode);
+    setPendingAutoRunId(null);
+    if (nextMode === "structure") {
+      setActiveActionLabel("Draft records");
+      setActiveExplanation(DRAFT_ACTION_EXPLANATION);
+    } else if (nextMode === "capture") {
+      setActiveActionLabel("Import drafts");
+      setActiveExplanation("Paste structured Codex output and review it locally before saving any records.");
+    } else {
+      setActiveActionLabel(DEFAULT_ACTION_LABEL);
+      setActiveExplanation(DEFAULT_ACTION_EXPLANATION);
+    }
+  }
+
+  async function runAssistant(nextMode: AssistantMode, options: { grantConsent?: boolean } = {}) {
     setError(null);
     setNotice(null);
-    if (nextMode !== "capture" && !canSend) return;
+    const consentGranted = nextMode === "capture" || ack || options.grantConsent;
+    if (nextMode !== "capture" && (!canContactCodex || !consentGranted)) return;
+    if (options.grantConsent) grantContextConsent();
     const input = nextMode === "capture" ? pasted : prompt;
     if (!input.trim()) return;
+    setPendingAutoRunId(null);
     setBusy(true);
     setMode(nextMode);
     setMessages((current) => [...current, { role: "user", content: input.trim(), route }]);
+    await waitForPaint();
     try {
       if (nextMode === "capture") {
         const parsed = parseDraftSet(input, "pasted", project);
@@ -258,8 +334,9 @@ Do not draft repo context files, AGENTS.md, or instructions to write into the li
       }
       setPrompt("");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-      setMessages((current) => [...current, { role: "system", content: caught instanceof Error ? caught.message : String(caught), route: "unavailable" }]);
+      const message = friendlyAssistantError(caught);
+      setError(message);
+      setMessages((current) => [...current, { role: "system", content: message, route: "unavailable" }]);
     } finally {
       activeStreamRef.current = null;
       setBusy(false);
@@ -270,27 +347,33 @@ Do not draft repo context files, AGENTS.md, or instructions to write into the li
     setBusy(true);
     setError(null);
     try {
-      const tickets: Ticket[] = [
-        ...project.tickets,
-        ...drafts.tickets
-          .filter((_, index) => selected[`ticket:${index}`])
-          .map((draft) => {
-            const normalized = normalizeTicketDraft(draft);
-            return {
-              id: recordId(normalized.title),
-              title: normalized.title,
-              status: normalized.status,
-              priority: normalized.priority,
-              summary: normalized.summary,
-              acceptance_criteria: normalized.acceptance_criteria,
-              linked_files: normalized.linked_files,
-              linked_decisions: normalized.linked_decisions,
-              linked_threads: normalized.linked_threads,
-              generated_prompts: [],
-            };
-          }),
-      ];
-      if (tickets.length !== project.tickets.length) await saveTickets(project, tickets);
+      const tickets = [...project.tickets];
+      let ticketsChanged = false;
+      for (const [index, draft] of drafts.tickets.entries()) {
+        if (!selected[`ticket:${index}`]) continue;
+        const normalized = normalizeTicketDraft(draft);
+        const existingIndex = normalized.id
+          ? tickets.findIndex((ticket) => ticket.id === normalized.id)
+          : -1;
+        const existingTicket = existingIndex >= 0 ? tickets[existingIndex] : null;
+        const nextTicket: Ticket = {
+          ...(existingTicket ?? {}),
+          id: existingTicket ? existingTicket.id : uniqueTicketId(recordId(normalized.title), tickets),
+          title: normalized.title,
+          status: normalized.status,
+          priority: normalized.priority,
+          summary: normalized.summary,
+          acceptance_criteria: normalized.acceptance_criteria,
+          linked_files: normalized.linked_files,
+          linked_decisions: normalized.linked_decisions,
+          linked_threads: normalized.linked_threads,
+          generated_prompts: existingTicket?.generated_prompts ?? [],
+        };
+        if (existingIndex >= 0) tickets[existingIndex] = nextTicket;
+        else tickets.push(nextTicket);
+        ticketsChanged = true;
+      }
+      if (ticketsChanged) await saveTickets(project, tickets);
 
       for (const [index, idea] of drafts.ideas.entries()) {
         if (!selected[`idea:${index}`]) continue;
@@ -342,18 +425,35 @@ Do not draft repo context files, AGENTS.md, or instructions to write into the li
       if (!busy && selectedDraftCount > 0) void saveSelectedDrafts();
       return;
     }
-    if (!primaryDisabled) void runAssistant(mode);
+    handlePrimaryAction();
   }
 
+  function handlePrimaryAction() {
+    if (primaryDisabled) return;
+    if (mode !== "capture" && !ack) {
+      void runAssistant(mode, { grantConsent: true });
+      return;
+    }
+    void runAssistant(mode);
+  }
+
+  useEffect(() => {
+    if (!pendingAutoRunId || mode === "capture" || !ack || !canContactCodex || !prompt.trim()) return;
+    setPendingAutoRunId(null);
+    void runAssistant(mode);
+    // The effect intentionally runs only when the pending request becomes sendable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ack, canContactCodex, mode, pendingAutoRunId, prompt]);
+
   return (
-    <div className="assistant-layout grid gap-3.5" onKeyDown={handleCommandEnter}>
-      <div className="flex items-start gap-3 justify-between">
+    <div className="assistant-layout flex h-full min-h-0 flex-col gap-3.5" onKeyDown={handleCommandEnter}>
+      <div className="shrink-0 flex items-start gap-3 justify-between">
         <div>
           <h2 className="m-0 text-[16px] text-ink font-semibold flex items-center gap-2">
-            <Bot size={16} className="text-accent" /> Assistant
+            <Bot size={16} className="text-ai-fg" /> {activeActionLabel}
           </h2>
           <p className="m-0 mt-1 text-[12.5px] text-ink-faint max-w-[720px] leading-[1.5]">
-            Chat with Codex using the current project and selection, then save reviewed Waymark drafts.
+            {activeExplanation}
           </p>
         </div>
         <StatusPill status={status} route={route} />
@@ -367,114 +467,137 @@ Do not draft repo context files, AGENTS.md, or instructions to write into the li
       {error ? <Notice tone="err"><AlertTriangle size={13} /> {error}</Notice> : null}
       {notice ? <Notice tone="ok"><Check size={13} /> {notice}</Notice> : null}
 
-      <Card className="p-3.5 overflow-visible">
+      <Card className="shrink-0 p-3.5 overflow-visible">
         <div className="grid gap-2.5 mb-3">
-          <div className="assistant-mode-switch w-full grid grid-cols-3" aria-label="Assistant action">
-            <ModeButton active={mode === "brainstorm"} onClick={() => setMode("brainstorm")} title="Chat without creating drafts">Chat</ModeButton>
-            <ModeButton active={mode === "structure"} onClick={() => setMode("structure")} title="Ask Codex to propose editable Waymark drafts">Draft records</ModeButton>
-            <button
-              type="button"
-              onClick={() => setMode("capture")}
-              className={cx(
-                "h-7 rounded-[4px] border text-[12px] inline-flex items-center justify-center gap-1.5",
-                mode === "capture"
-                  ? "bg-accent text-accent-ink border-accent-deep font-semibold"
-                  : "bg-transparent text-ink-faint border-transparent hover:text-ink",
-              )}
-              title="Paste structured draft output from another Codex session"
-            >
-              <FileInput size={12} /> Import
-            </button>
-          </div>
-
-          <div className="rounded-[5px] border border-line-soft bg-surface-input-2 p-2 grid gap-2">
-            <div className="flex items-start gap-3 justify-between">
-              <div className="min-w-0">
-                <div className="text-[10px] uppercase tracking-[0.09em] text-ink-mute font-semibold">
-                  Assistant connection
-                </div>
-                <div className="mt-0.5 text-[12px] text-ink-soft truncate" title={status.detail}>
-                  {status.state === "ready" ? "Connected through Codex" : `OpenAI account is ${connectionStatusLabel(status.state).toLowerCase()}`}
+          {mode === "capture" ? (
+            <Notice tone="warn">
+              <FileInput size={13} /> Import parses pasted draft JSON locally. It does not contact Codex.
+            </Notice>
+          ) : (
+            <div className="ai-context-notice">
+              <div className="flex items-start gap-2">
+                {ack ? <Check size={13} className="mt-0.5 shrink-0 text-ai-fg" /> : <Sparkles size={13} className="mt-0.5 shrink-0 text-ai-fg" />}
+                <div className="min-w-0">
+                  <div>
+                    Codex will receive the selected project context. Nothing is written until you review and save drafts.
+                  </div>
+                  <div className="mt-1 text-[11px] text-ink-mute">
+                    {ack
+                      ? "Approved for this app session."
+                      : pendingAutoRunId
+                        ? "Click Send to Codex to run this recommendation."
+                        : "Click Send to Codex when you are ready."}
+                    {status.state !== "ready" ? " Codex is not connected; open Advanced to connect or check status." : ""}
+                  </div>
                 </div>
               </div>
-              <StatusPill status={status} route={route} compact />
             </div>
-            <div className="flex flex-wrap items-end gap-1.5">
-              <AssistantSelect label="Route" value={route} onChange={(value) => setRoute(value as CodexRoute)} className="min-w-[104px] flex-1">
-                <option value="app-server">App server</option>
-                <option value="cli">CLI</option>
-              </AssistantSelect>
-              <div ref={modelSettingsRef} className="relative">
-                <Btn
-                  type="button"
-                  onClick={() => setModelSettingsOpen((open) => !open)}
-                  aria-haspopup="dialog"
-                  aria-expanded={modelSettingsOpen}
-                  title="Model and reasoning settings"
-                  className="min-w-[126px] justify-center"
-                >
-                  <SlidersHorizontal size={11} />
-                  {modelLabel(model)} · {reasoningLabel(reasoningEffort)}
-                </Btn>
-                {modelSettingsOpen ? (
-                  <div
-                    role="dialog"
-                    aria-label="Model settings"
-                    className="absolute right-0 top-[calc(100%+6px)] z-50 w-[264px] rounded-[6px] border border-line bg-surface-2 p-2.5 shadow-[0_14px_42px_oklch(0_0_0_/_0.42)]"
-                  >
-                    <SettingGroup label="Model">
-                      <div className="grid grid-cols-2 gap-1">
-                        {(["latest", "gpt-5.5", "gpt-5.4", "gpt-5.4-mini"] as AssistantModelChoice[]).map((choice) => (
-                          <SettingChoice key={choice} active={model === choice} onClick={() => setModel(choice)}>
-                            {modelLabel(choice)}
-                          </SettingChoice>
-                        ))}
+          )}
+
+          <details className="rounded-[5px] border border-line-soft bg-surface-input-2">
+            <summary className="cursor-pointer select-none px-2.5 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-faint hover:text-ink">
+              Advanced
+            </summary>
+            <div className="grid gap-2.5 border-t border-line-soft p-2.5">
+              <div className="assistant-mode-switch w-full grid grid-cols-[repeat(auto-fit,minmax(88px,1fr))]" aria-label="Assistant action">
+                <ModeButton active={mode === "brainstorm"} onClick={() => setManualMode("brainstorm")} tooltip="Chat with Codex about the project. Consumes tokens when you run it.">Chat</ModeButton>
+                <ModeButton active={mode === "structure"} onClick={() => setManualMode("structure")} tooltip="Ask Codex for editable tickets, ideas, decisions, or thread references. Consumes tokens when you run it.">Draft records</ModeButton>
+                <ModeButton active={mode === "capture"} onClick={() => setManualMode("capture")} tooltip="Paste structured draft JSON from another Codex session. This is local only.">
+                  <FileInput size={12} /> Import
+                </ModeButton>
+              </div>
+
+              <div className="rounded-[5px] border border-line-soft bg-surface-input-2 p-2 grid gap-2">
+                <div className="flex items-start gap-3 justify-between">
+                  <div className="min-w-0">
+                    <div className="text-[10px] uppercase tracking-[0.09em] text-ink-mute font-semibold">
+                      Assistant connection
+                    </div>
+                    <div className="mt-0.5 text-[12px] text-ink-soft truncate" title={status.detail}>
+                      {status.state === "ready" ? "Connected through Codex" : `OpenAI account is ${connectionStatusLabel(status.state).toLowerCase()}`}
+                    </div>
+                  </div>
+                  <StatusPill status={status} route={route} compact />
+                </div>
+                <div className="flex flex-wrap items-end gap-1.5">
+                  <AssistantSelect label="Route" value={route} onChange={(value) => setRoute(value as CodexRoute)} className="min-w-[104px] flex-1">
+                    <option value="app-server">App server</option>
+                    <option value="cli">CLI</option>
+                  </AssistantSelect>
+                  <div ref={modelSettingsRef} className="relative">
+                    <Btn
+                      type="button"
+                      onClick={() => setModelSettingsOpen((open) => !open)}
+                      aria-haspopup="dialog"
+                      aria-expanded={modelSettingsOpen}
+                      title="Model and reasoning settings"
+                      className="min-w-[126px] justify-center"
+                    >
+                      <SlidersHorizontal size={11} />
+                      {modelLabel(model)} · {reasoningLabel(reasoningEffort)}
+                    </Btn>
+                    {modelSettingsOpen ? (
+                      <div
+                        role="dialog"
+                        aria-label="Model settings"
+                        className="absolute right-0 top-[calc(100%+6px)] z-50 w-[264px] rounded-[6px] border border-line bg-surface-2 p-2.5 shadow-[0_14px_42px_oklch(0_0_0_/_0.42)]"
+                      >
+                        <SettingGroup label="Model">
+                          <div className="grid grid-cols-2 gap-1">
+                            {(["latest", "gpt-5.5", "gpt-5.4", "gpt-5.4-mini"] as AssistantModelChoice[]).map((choice) => (
+                              <SettingChoice key={choice} active={model === choice} onClick={() => setModel(choice)}>
+                                {modelLabel(choice)}
+                              </SettingChoice>
+                            ))}
+                          </div>
+                        </SettingGroup>
+                        <SettingGroup label="Reasoning">
+                          <div className="grid grid-cols-4 gap-1">
+                            {(["low", "medium", "high", "xhigh"] as AssistantReasoningEffort[]).map((choice) => (
+                              <SettingChoice key={choice} active={reasoningEffort === choice} onClick={() => setReasoningEffort(choice)}>
+                                {reasoningLabel(choice)}
+                              </SettingChoice>
+                            ))}
+                          </div>
+                        </SettingGroup>
                       </div>
-                    </SettingGroup>
-                    <SettingGroup label="Reasoning">
-                      <div className="grid grid-cols-4 gap-1">
-                        {(["low", "medium", "high", "xhigh"] as AssistantReasoningEffort[]).map((choice) => (
-                          <SettingChoice key={choice} active={reasoningEffort === choice} onClick={() => setReasoningEffort(choice)}>
-                            {reasoningLabel(choice)}
-                          </SettingChoice>
-                        ))}
-                      </div>
-                    </SettingGroup>
+                    ) : null}
+                  </div>
+                  <Btn type="button" onClick={refreshCodexStatus} disabled={!isTauri() || checkingCodex}>
+                    {checkingCodex ? <Loader2 size={11} className="animate-spin" /> : null}
+                    {checkingCodex ? "Checking" : "Check"}
+                  </Btn>
+                  <Btn type="button" onClick={openCodexConnection} disabled={!isTauri()}>
+                    {status.state === "ready" ? <RefreshCw size={11} /> : <LogIn size={11} />}
+                    {connectionActionLabel}
+                  </Btn>
+                </div>
+                {codexCheckFeedback ? (
+                  <div className="min-w-0 truncate font-mono text-[10.5px] text-ink-mute" title={codexCheckFeedback}>
+                    {codexCheckFeedback}
                   </div>
                 ) : null}
               </div>
-              <Btn type="button" onClick={refreshCodexStatus} disabled={!isTauri() || checkingCodex}>
-                {checkingCodex ? <Loader2 size={11} className="animate-spin" /> : null}
-                {checkingCodex ? "Checking" : "Check"}
-              </Btn>
-              <Btn type="button" onClick={openCodexConnection} disabled={!isTauri()}>
-                {status.state === "ready" ? <RefreshCw size={11} /> : <LogIn size={11} />}
-                {connectionActionLabel}
-              </Btn>
+
+              <InlineTooltip tooltip="Fill the prompt with an onboarding-draft request. It will not contact Codex until you press Run Codex." className="w-full">
+                <Btn
+                  variant="ai"
+                  type="button"
+                  className="w-full justify-center"
+                  onClick={() => {
+                    setManualMode("structure");
+                    setActiveActionLabel("Draft onboarding records");
+                    setActiveExplanation("Ask Codex to draft reviewable onboarding records for this project.");
+                    setPrompt(onboardingPrompt);
+                  }}
+                  disabled={busy}
+                >
+                  <Sparkles size={11} /> Draft onboarding records
+                </Btn>
+              </InlineTooltip>
             </div>
-            {codexCheckFeedback ? (
-              <div className="min-w-0 truncate font-mono text-[10.5px] text-ink-mute" title={codexCheckFeedback}>
-                {codexCheckFeedback}
-              </div>
-            ) : null}
-          </div>
-
-          <Btn
-            type="button"
-            onClick={() => {
-              setMode("structure");
-              setPrompt(onboardingPrompt);
-            }}
-            disabled={busy}
-          >
-            <Sparkles size={11} /> Draft onboarding records
-          </Btn>
+          </details>
         </div>
-
-        <label className="flex items-start gap-2 text-[12px] text-ink-faint mb-3 leading-[1.45]">
-          <input type="checkbox" checked={ack} onChange={(event) => setAck(event.target.checked)} className="mt-0.5" />
-          Send my prompt and selected project context to OpenAI through my local Codex connection using the {model === "latest" ? "latest" : model.toUpperCase()} model and {reasoningEffort} reasoning. Waymark will only write files after I review and save drafts.
-        </label>
 
         {mode === "capture" ? (
           <textarea
@@ -492,22 +615,34 @@ Do not draft repo context files, AGENTS.md, or instructions to write into the li
           />
         )}
 
+        {busy && mode !== "capture" ? (
+          <div className="codex-run-note mt-3">
+            Codex is running. You can still read the conversation and inspect the current drafts while Waymark waits for a response.
+          </div>
+        ) : null}
+
         <div className="flex justify-end gap-2 mt-3">
-          <Btn variant="primary" onClick={() => runAssistant(mode)} disabled={primaryDisabled}>
-            {busy ? <Loader2 size={11} className="animate-spin" /> : primaryIcon} {primaryLabel}
-          </Btn>
+          <InlineTooltip tooltip={primaryTooltip}>
+            <Btn
+              variant={mode === "capture" ? "primary" : "codex"}
+              onClick={handlePrimaryAction}
+              disabled={primaryDisabled}
+            >
+              {busy ? <Loader2 size={11} className="animate-spin" /> : primaryIcon} {primaryLabel}
+            </Btn>
+          </InlineTooltip>
         </div>
       </Card>
 
       <div className="assistant-workspace-grid">
-        <Card className="assistant-chat-card min-h-[420px] overflow-hidden">
+        <Card className="assistant-chat-card flex min-h-0 flex-col overflow-hidden">
           <div className="px-3 py-2 border-b border-line-soft flex items-center gap-2">
             <div className="text-[11px] uppercase tracking-[0.09em] text-ink-faint font-semibold flex-1">
               Conversation
             </div>
             {busy && route === "app-server" ? (
-              <span className="inline-flex items-center gap-1.5 text-[11px] text-accent">
-                <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
+              <span className="inline-flex items-center gap-1.5 text-[11px] text-ai-fg">
+                <span className="h-1.5 w-1.5 rounded-full bg-ai animate-pulse" />
                 streaming
               </span>
             ) : null}
@@ -589,7 +724,7 @@ function SettingChoice({ active, onClick, children }: { active: boolean; onClick
       className={cx(
         "h-7 rounded-[4px] border px-2 text-[11.5px] text-center min-w-0",
         active
-          ? "border-accent-deep bg-accent text-accent-ink font-semibold"
+          ? "border-ai-deep bg-ai-soft text-ai-fg font-semibold"
           : "border-line-soft bg-surface-input-2 text-ink-faint hover:text-ink hover:bg-surface-4",
       )}
     >
@@ -623,7 +758,7 @@ function StatusPill({ status, route, compact = false }: { status: CodexStatus; r
   return (
     <div className="text-right">
       <div className={cx("font-mono text-[11px]", color)}>{connectionStatusLabel(status.state)}</div>
-      <div className="font-mono text-[10.5px] text-ink-faint">{route}</div>
+      {compact ? <div className="font-mono text-[10.5px] text-ink-faint">{route}</div> : null}
       {compact ? null : (
         <div className="text-[10.5px] text-ink-mute max-w-[280px] truncate" title={status.detail}>{status.detail}</div>
       )}
@@ -656,15 +791,21 @@ function ChatMessage({ message, streaming }: { message: AssistantMessage; stream
   );
 }
 
-function ModeButton({ active, onClick, title, children }: { active: boolean; onClick: () => void; title?: string; children: ReactNode }) {
+function ModeButton({ active, onClick, tooltip, children }: { active: boolean; onClick: () => void; tooltip: string; children: ReactNode }) {
   return (
-    <button
-      onClick={onClick}
-      title={title}
-      className={cx("h-7 px-2 rounded-[4px] border text-[12px] inline-flex items-center justify-center min-w-0", active ? "bg-accent text-accent-ink border-accent-deep font-semibold" : "bg-transparent text-ink-faint border-transparent hover:text-ink")}
-    >
-      {children}
-    </button>
+    <InlineTooltip tooltip={tooltip} className="w-full">
+      <button
+        type="button"
+        onClick={onClick}
+        title={tooltip}
+        className={cx(
+          "h-7 w-full px-2 rounded-[4px] border text-[12px] inline-flex items-center justify-center gap-1.5 min-w-0",
+          active ? "bg-ai text-ai-ink border-ai-deep font-semibold" : "bg-transparent text-ink-faint border-transparent hover:text-ink",
+        )}
+      >
+        {children}
+      </button>
+    </InlineTooltip>
   );
 }
 
@@ -687,7 +828,7 @@ function DraftReview({
 }) {
   const selectedCount = Object.values(selected).filter(Boolean).length;
   return (
-    <Card data-draft-review="true">
+    <Card data-draft-review="true" className="flex min-h-0 flex-col">
       <div className="px-3 py-2 border-b border-line-soft flex items-center gap-2">
         <div className="text-[11px] uppercase tracking-[0.09em] text-ink-faint font-semibold flex-1">Draft review</div>
         <span className="font-mono text-[10px] text-ink-mute">{selectedCount}/{count}</span>
@@ -700,7 +841,7 @@ function DraftReview({
       {count === 0 ? (
         <div className="p-5 text-[12.5px] text-ink-mute">No drafts yet.</div>
       ) : (
-        <div className="max-h-[520px] overflow-auto">
+        <div className="min-h-0 flex-1 overflow-auto">
           <DraftGroup title="Tickets" items={drafts.tickets} prefix="ticket" selected={selected} setSelected={setSelected} render={(item, index) => (
             <TicketDraftEditor draft={item} onChange={(draft) => replaceDraft(setDrafts, drafts, "tickets", index, draft)} />
           )} />
@@ -766,6 +907,11 @@ function DraftGroup<T>({
 function TicketDraftEditor({ draft, onChange }: { draft: DraftTicket; onChange: (draft: DraftTicket) => void }) {
   return (
     <div className="grid gap-2">
+      {draft.id ? (
+        <div className="inline-flex w-fit rounded-[3px] border border-ai-deep bg-ai-soft px-1.5 py-px font-mono text-[10px] text-ai-fg">
+          updates {draft.id}
+        </div>
+      ) : null}
       <input value={draft.title} onChange={(event) => onChange({ ...draft, title: event.target.value })} className="assistant-field" />
       <div className="grid grid-cols-2 gap-2">
         <select value={draft.status} onChange={(event) => onChange({ ...draft, status: event.target.value as DraftTicket["status"] })} className="assistant-field">
@@ -833,4 +979,27 @@ function replaceDraft<T extends keyof Pick<WaymarkDraftSet, "tickets" | "ideas" 
     ...drafts,
     [key]: drafts[key].map((item, itemIndex) => itemIndex === index ? value : item),
   });
+}
+
+function uniqueTicketId(baseId: string, tickets: Ticket[]) {
+  const used = new Set(tickets.map((ticket) => ticket.id));
+  if (!used.has(baseId)) return baseId;
+  let index = 2;
+  while (used.has(`${baseId}-${index}`)) index += 1;
+  return `${baseId}-${index}`;
+}
+
+function waitForPaint() {
+  return new Promise<void>((resolve) => {
+    requestAnimationFrame(() => resolve());
+  });
+}
+
+function friendlyAssistantError(caught: unknown) {
+  const raw = caught instanceof Error ? caught.message : String(caught);
+  if (raw.includes("Invalid schema for response_format") || raw.includes("invalid_json_schema")) {
+    return "Codex rejected Waymark's structured draft schema. The schema has been updated; try running the request again.";
+  }
+  if (raw.length <= 900) return raw;
+  return `${raw.slice(0, 900).trimEnd()}\n\n…error details truncated.`;
 }

@@ -104,7 +104,7 @@ tickets:
     generated_prompts: []
   - id: contextual-codex-recommendations
     title: Contextual Codex recommendations
-    status: next
+    status: done
     priority: high
     summary: Let meaningful project-memory fields ask Codex for reviewable recommendations that turn brainstorming into tickets, decisions, summaries, and next-step options.
     acceptance_criteria:
@@ -119,11 +119,64 @@ tickets:
       - docs/ai-workflows.md
       - docs/mvp-boundaries.md
       - docs/roadmap.md
+      - src/assistant.ts
+      - src/app/AppShell.tsx
+      - src/app/hooks/useSelectionState.ts
       - src/components/assistant.tsx
-      - src/components/modals.tsx
       - src/components/inspector.tsx
+      - src/types.ts
     linked_decisions:
       - contextual-codex-recommendations
+    linked_threads: []
+    generated_prompts: []
+  - id: simplify-contextual-codex-ux
+    title: Simplify contextual Codex UX
+    status: done
+    priority: high
+    summary: Make contextual Codex actions clearer, more visually distinct, and less overwhelming by using explicit action labels, AI-specific styling, session-scoped consent, and a simplified Assistant default view.
+    acceptance_criteria:
+      - Contextual Codex buttons use explicit outcome labels instead of vague Ask copy.
+      - Codex recommendation actions use a cyan-blue AI treatment distinct from amber handoff actions.
+      - Contextual recommendation buttons prepare Assistant prompts but never invoke Codex directly.
+      - The Assistant default view hides advanced route, model, reasoning, connection, and import controls.
+      - Browser/demo and disconnected Codex states explain why recommendations cannot run.
+      - Token-consuming Codex run controls are visually distinct from AI setup, navigation, and prompt-fill controls.
+      - Structured draft schema accepts ticket updates without failing Codex strict schema validation.
+      - Long Codex errors are summarized so the Assistant panel remains responsive.
+      - Advanced action modes are compact at inspector width and expose immediate hover guidance.
+      - Right inspector modes avoid nested vertical scroll containers unless the mode explicitly splits fixed-height sections.
+    linked_files:
+      - docs/ai-workflows.md
+      - src/assistant.ts
+      - src/components/assistant.tsx
+      - src/components/inspector.tsx
+      - src/components/primitives.tsx
+      - src/components/shell.tsx
+      - src/styles.css
+      - src-tauri/src/codex.rs
+    linked_decisions:
+      - contextual-codex-recommendations
+    linked_threads: []
+    generated_prompts: []
+  - id: delete-tickets
+    title: Delete tickets
+    status: done
+    priority: medium
+    summary: Add an explicit destructive action for removing tickets from project memory while keeping linked files, notes, prompts, and thread summaries untouched.
+    acceptance_criteria:
+      - Ticket inspector exposes a visible Delete action with danger styling.
+      - Deleting a ticket requires confirmation that explains only the ticket record is removed.
+      - Confirmed deletes write through the existing tickets.yaml save path and refresh the workspace.
+      - Browser/demo mode explains that local YAML deletes require the Tauri app.
+      - Destructive record actions are documented as confirmed, explicit project-file writes.
+    linked_files:
+      - docs/development-standards.md
+      - src/app/AppShell.tsx
+      - src/app/hooks/useProjectActions.ts
+      - src/components/inspector.tsx
+      - src/components/primitives.tsx
+      - projects/waymark/tickets.yaml
+    linked_decisions: []
     linked_threads: []
     generated_prompts: []
   - id: guided-repo-onboarding

@@ -175,6 +175,26 @@ export function useProjectActions({
     [clearEditingTicket, project, refresh, setError, setNotice],
   );
 
+  const deleteTicket = useCallback(
+    async (ticket: Ticket) => {
+      if (!project) return;
+      if (!isTauri()) {
+        setNotice("Run Waymark through Tauri to delete local ticket YAML.");
+        return;
+      }
+
+      try {
+        await saveTickets(project, project.tickets.filter((candidate) => candidate.id !== ticket.id));
+        setNotice(`Deleted ${ticket.title}.`);
+        clearEditingTicket();
+        await refresh();
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    },
+    [clearEditingTicket, project, refresh, setError, setNotice],
+  );
+
   const capture = useCallback(
     async (payload: CapturePayload) => {
       if (!project) return;
@@ -351,6 +371,7 @@ export function useProjectActions({
       sendHandoff,
       changeStatus,
       saveTicket,
+      deleteTicket,
       capture,
       addFile,
       addLink,
@@ -366,6 +387,7 @@ export function useProjectActions({
       addLink,
       capture,
       changeStatus,
+      deleteTicket,
       deleteLink,
       handoffOptions,
       onboardRepo,

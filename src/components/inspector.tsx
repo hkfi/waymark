@@ -5,6 +5,7 @@ import { openPath } from "../tauri";
 import type { LinkRecord, NoteRecord, ThreadRecord, Ticket, TicketStatus, WaymarkProject, WorkspaceData } from "../types";
 import { buildPrompt, type HandoffContextOption } from "../workspace";
 import { activeLane, projectFile, resolveProjectPath, tokenEstimate, type InspectorMode } from "../app/model";
+import { buildNoteRecommendationPrompt, buildTicketRecommendationPrompt, type AssistantLaunchInput, type AssistantLaunchRequest } from "../assistant";
 import { AssistantView } from "./assistant";
 import { Btn, Card, Cell, CommandShortcutBadge, DataRow, EmptyRow, StatusChip, cx } from "./primitives";
 
@@ -25,9 +26,13 @@ export function Inspector({
   onToggleHandoffContext,
   onStatus,
   onEditTicket,
+  onDeleteTicket,
   onToggleContextHandoff,
   onDeleteContextLink,
   onSaved,
+  assistantLaunchRequest,
+  onAssistantLaunchConsumed,
+  onAskAssistant,
 }: {
   scope: "tickets" | "memory" | "context";
   mode: InspectorMode;
@@ -45,9 +50,13 @@ export function Inspector({
   onToggleHandoffContext: (id: string) => void;
   onStatus: (ticket: Ticket, status: TicketStatus) => void;
   onEditTicket: (ticket: Ticket) => void;
+  onDeleteTicket: (ticket: Ticket) => void;
   onToggleContextHandoff: (link: LinkRecord, included: boolean) => void;
   onDeleteContextLink: (link: LinkRecord) => void;
   onSaved: () => Promise<void>;
+  assistantLaunchRequest?: AssistantLaunchRequest | null;
+  onAssistantLaunchConsumed: () => void;
+  onAskAssistant: (request: AssistantLaunchInput) => void;
 }) {
   const bundleSize = multi.length;
 
@@ -59,7 +68,7 @@ export function Inspector({
             <InspectorTab active={mode === "context"} onClick={() => onMode("context")} icon={Link2}>
               Context
             </InspectorTab>
-            <InspectorTab active={mode === "assistant"} onClick={() => onMode("assistant")} icon={Sparkles}>
+            <InspectorTab active={mode === "assistant"} onClick={() => onMode("assistant")} icon={Sparkles} tone="ai">
               AI
             </InspectorTab>
           </>
@@ -71,7 +80,7 @@ export function Inspector({
             <InspectorTab active={mode === "thread"} onClick={() => onMode("thread")} icon={MessageSquareText}>
               Ref
             </InspectorTab>
-            <InspectorTab active={mode === "assistant"} onClick={() => onMode("assistant")} icon={Sparkles}>
+            <InspectorTab active={mode === "assistant"} onClick={() => onMode("assistant")} icon={Sparkles} tone="ai">
               AI
             </InspectorTab>
           </>
@@ -86,7 +95,7 @@ export function Inspector({
                 <span className="font-mono text-[9.5px] px-1 rounded-[3px] bg-accent text-accent-ink leading-[14px]">{bundleSize}</span>
               ) : null}
             </InspectorTab>
-            <InspectorTab active={mode === "assistant"} onClick={() => onMode("assistant")} icon={Sparkles}>
+            <InspectorTab active={mode === "assistant"} onClick={() => onMode("assistant")} icon={Sparkles} tone="ai">
               AI
             </InspectorTab>
             <InspectorTab active={mode === "thread"} onClick={() => onMode("thread")} icon={MessageSquareText}>
@@ -118,6 +127,8 @@ export function Inspector({
             onStatus={onStatus}
             onSendHandoff={onSendHandoff}
             onEdit={onEditTicket}
+            onDelete={onDeleteTicket}
+            onAskAssistant={onAskAssistant}
           />
         ) : (
           <InspectorEmpty>Select a ticket to inspect.</InspectorEmpty>
@@ -134,10 +145,12 @@ export function Inspector({
           onToggleHandoffContext={onToggleHandoffContext}
         />
       ) : mode === "assistant" ? (
-        <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3">
+        <div className="flex-1 min-h-0 overflow-hidden px-3 py-3">
           <AssistantView
             project={project}
             selection={{ ticket, thread, note, bundle: multi }}
+            launchRequest={assistantLaunchRequest}
+            onLaunchConsumed={onAssistantLaunchConsumed}
             onSaved={onSaved}
           />
         </div>
@@ -150,7 +163,7 @@ export function Inspector({
           onDeleteLink={onDeleteContextLink}
         />
       ) : (
-        <InspectorNote note={note} />
+        <InspectorNote note={note} onAskAssistant={onAskAssistant} />
       )}
     </aside>
   );
@@ -160,11 +173,13 @@ function InspectorTab({
   active,
   onClick,
   icon: Icon,
+  tone = "default",
   children,
 }: {
   active: boolean;
   onClick: () => void;
   icon: LucideIcon;
+  tone?: "default" | "ai";
   children: ReactNode;
 }) {
   return (
@@ -172,7 +187,13 @@ function InspectorTab({
       onClick={onClick}
       className={cx(
         "inline-flex items-center gap-1 h-[26px] px-1.5 rounded-[3px] text-[11.5px] whitespace-nowrap shrink-0 cursor-pointer",
-        active ? "bg-surface-4 text-ink" : "text-ink-faint hover:bg-surface-3 hover:text-ink",
+        active
+          ? tone === "ai"
+            ? "bg-ai-soft text-ai-fg"
+            : "bg-surface-4 text-ink"
+          : tone === "ai"
+            ? "text-ai-fg hover:bg-ai-soft hover:text-ink"
+            : "text-ink-faint hover:bg-surface-3 hover:text-ink",
       )}
     >
       <Icon size={12} />
@@ -297,8 +318,24 @@ function ContextPromptPill({ included }: { included: boolean }) {
   );
 }
 
-function InspectorBody({ children }: { children: ReactNode }) {
-  return <div className="flex-1 min-h-0 overflow-y-auto px-4 pt-3.5 pb-[18px]">{children}</div>;
+function InspectorBody({
+  children,
+  scroll = true,
+  className,
+}: {
+  children: ReactNode;
+  scroll?: boolean;
+  className?: string;
+}) {
+  return (
+    <div className={cx(
+      "flex-1 min-h-0 px-4 pt-3.5 pb-[18px]",
+      scroll ? "overflow-y-auto" : "overflow-hidden",
+      className,
+    )}>
+      {children}
+    </div>
+  );
 }
 
 function InspectorActions({ children }: { children: ReactNode }) {
@@ -329,18 +366,47 @@ function InspectorHead({
 
 function InspectorSection({
   label,
+  action,
+  className,
   children,
 }: {
   label: ReactNode;
+  action?: ReactNode;
+  className?: string;
   children: ReactNode;
 }) {
   return (
-    <div className="mb-3.5">
-      <div className="text-[10px] uppercase tracking-[0.10em] text-ink-mute font-semibold mb-1.5 whitespace-nowrap">
-        {label}
+    <div className={cx("mb-3.5", className)}>
+      <div className="mb-1.5 flex min-w-0 items-center gap-2">
+        <div className="min-w-0 flex-1 text-[10px] uppercase tracking-[0.10em] text-ink-mute font-semibold whitespace-nowrap">
+          {label}
+        </div>
+        {action}
       </div>
       {children}
     </div>
+  );
+}
+
+function ContextualAssistantButton({
+  label,
+  title,
+  onClick,
+}: {
+  label: string;
+  title: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      className="ai-action-button"
+    >
+      <Sparkles size={10} />
+      {label}
+    </button>
   );
 }
 
@@ -350,12 +416,16 @@ function InspectorTicket({
   onStatus,
   onSendHandoff,
   onEdit,
+  onDelete,
+  onAskAssistant,
 }: {
   project: WaymarkProject;
   ticket: Ticket;
   onStatus: (ticket: Ticket, status: TicketStatus) => void;
   onSendHandoff: () => void;
   onEdit: (ticket: Ticket) => void;
+  onDelete: (ticket: Ticket) => void;
+  onAskAssistant: (request: AssistantLaunchInput) => void;
 }) {
   const linkedDecisions = project.decisions.filter((decision) =>
     ticket.linked_decisions?.includes(decision.id),
@@ -393,7 +463,22 @@ function InspectorTicket({
           }
         />
 
-        <InspectorSection label="Summary">
+        <InspectorSection
+          label="Summary"
+          action={
+            <ContextualAssistantButton
+              label="Improve summary"
+              title="Prepare a Codex prompt for improving this ticket summary"
+              onClick={() => onAskAssistant({
+                mode: "structure",
+                prompt: buildTicketRecommendationPrompt(ticket, "summary"),
+                notice: "Prepared a summary-improvement prompt.",
+                actionLabel: "Improve summary",
+                explanation: "Review the prepared prompt, then press the rainbow Codex button to get editable drafts.",
+              })}
+            />
+          }
+        >
           <div className="text-[12.5px] text-ink-soft leading-[1.55]">
             {ticket.summary ? (
               ticket.summary
@@ -405,7 +490,22 @@ function InspectorTicket({
           </div>
         </InspectorSection>
 
-        <InspectorSection label="Acceptance criteria">
+        <InspectorSection
+          label="Acceptance criteria"
+          action={
+            <ContextualAssistantButton
+              label="Draft checks"
+              title="Prepare a Codex prompt for drafting acceptance criteria"
+              onClick={() => onAskAssistant({
+                mode: "structure",
+                prompt: buildTicketRecommendationPrompt(ticket, "acceptance"),
+                notice: "Prepared an acceptance-check prompt.",
+                actionLabel: "Draft checks",
+                explanation: "Review the prepared prompt, then press the rainbow Codex button to get editable drafts.",
+              })}
+            />
+          }
+        >
           {ticket.acceptance_criteria?.length ? (
             <ul className="list-none p-0 m-0 flex flex-col gap-1.5">
               {ticket.acceptance_criteria.map((item, index) => (
@@ -483,12 +583,31 @@ prompts: ${ticket.generated_prompts?.length ?? 0}`}
         <Btn onClick={() => onEdit(ticket)}>
           <FileText size={11} /> Edit
         </Btn>
+        <Btn variant="ai" onClick={() => onAskAssistant({
+          mode: "structure",
+          prompt: buildTicketRecommendationPrompt(ticket, "next-steps"),
+          notice: "Prepared a next-steps prompt.",
+          actionLabel: "Suggest next steps",
+          explanation: "Review the prepared prompt, then press the rainbow Codex button to get editable drafts.",
+        })}>
+          <Sparkles size={11} /> Suggest next steps
+        </Btn>
         <Btn variant="primary" onClick={onSendHandoff}>
           <Sparkles size={11} /> Send to agent
         </Btn>
         {lane !== "next" ? <Btn variant="ghost" onClick={() => onStatus(ticket, "next")}>Mark next</Btn> : null}
         {lane !== "blocked" ? <Btn variant="ghost" onClick={() => onStatus(ticket, "blocked")}>Block</Btn> : null}
         {lane !== "done" ? <Btn variant="ghost" onClick={() => onStatus(ticket, "done")}>Mark done</Btn> : null}
+        <Btn
+          variant="danger"
+          onClick={() => {
+            if (window.confirm(`Delete ticket "${ticket.title}"? This removes it from tickets.yaml. Linked notes, prompts, and thread summaries are not deleted.`)) {
+              onDelete(ticket);
+            }
+          }}
+        >
+          <Trash2 size={11} /> Delete
+        </Btn>
       </InspectorActions>
     </>
   );
@@ -551,7 +670,7 @@ function InspectorPrompt({
 
   return (
     <>
-      <InspectorBody>
+      <InspectorBody scroll={false} className="grid grid-rows-[auto_minmax(96px,0.85fr)_minmax(170px,1.15fr)_auto] gap-3 pb-3">
         <InspectorHead
           eyebrow={<span className="text-[10.5px] text-ink-faint tracking-[0.08em] uppercase">Handoff prompt</span>}
           title={tickets.length > 1 ? `Bundle · ${tickets.length} tickets` : "Single ticket"}
@@ -568,8 +687,8 @@ function InspectorPrompt({
           }
         />
 
-        <InspectorSection label="Suggested context">
-          <Card>
+        <InspectorSection label="Suggested context" className="mb-0 flex min-h-0 flex-col">
+          <Card className="min-h-0 flex-1 overflow-y-auto">
             {handoffOptions.map((option) => {
               const included = selectedContext.has(option.id);
               const ToggleIcon = included ? CheckSquare : Square;
@@ -609,8 +728,8 @@ function InspectorPrompt({
           </Card>
         </InspectorSection>
 
-        <InspectorSection label={<></>}>
-          <div className="border border-line rounded-[5px] bg-surface-input-2 overflow-hidden">
+        <InspectorSection label={<></>} className="mb-0 flex min-h-0 flex-col">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[5px] border border-line bg-surface-input-2">
             <div className="flex items-center gap-2 px-2.5 py-1.5 border-b border-line-soft bg-surface-3">
               <span className="font-mono text-[10px] text-ink-faint uppercase tracking-[0.06em]">prompt.md</span>
               <span className="flex-1" />
@@ -621,13 +740,13 @@ function InspectorPrompt({
                 <Copy size={11} /> Copy
               </button>
             </div>
-            <pre className="m-0 px-3 py-2.5 font-mono text-[11px] text-ink-soft whitespace-pre-wrap leading-[1.55] max-h-[360px] overflow-y-auto">
+            <pre className="m-0 min-h-0 flex-1 overflow-y-auto px-3 py-2.5 font-mono text-[11px] text-ink-soft whitespace-pre-wrap leading-[1.55]">
               {prompt}
             </pre>
           </div>
         </InspectorSection>
 
-        <InspectorSection label="Order">
+        <InspectorSection label="Order" className="mb-0">
           <Card>
             {tickets.map((entry, index) => (
               <DataRow key={entry.id} cols="grid-cols-order" height={30} paddingX={10} gap={8}>
@@ -742,7 +861,13 @@ function InspectorThread({
   );
 }
 
-function InspectorNote({ note }: { note: NoteRecord | null }) {
+function InspectorNote({
+  note,
+  onAskAssistant,
+}: {
+  note: NoteRecord | null;
+  onAskAssistant: (request: AssistantLaunchInput) => void;
+}) {
   if (!note) return <InspectorEmpty>Select a decision or idea to inspect.</InspectorEmpty>;
   return (
     <>
@@ -763,7 +888,22 @@ function InspectorNote({ note }: { note: NoteRecord | null }) {
             </div>
           }
         />
-        <InspectorSection label="Body">
+        <InspectorSection
+          label="Body"
+          action={
+            <ContextualAssistantButton
+              label="Turn into records"
+              title={`Prepare a Codex prompt to turn this ${note.type} into structured project memory`}
+              onClick={() => onAskAssistant({
+                mode: "structure",
+                prompt: buildNoteRecommendationPrompt(note),
+                notice: `Prepared a prompt to turn this ${note.type} into records.`,
+                actionLabel: "Turn into records",
+                explanation: "Review the prepared prompt, then press the rainbow Codex button to get editable drafts.",
+              })}
+            />
+          }
+        >
           <div className="text-[12.5px] text-ink-soft leading-[1.55] whitespace-pre-wrap">{note.body || "No body."}</div>
         </InspectorSection>
         <InspectorSection label="Linked tickets">
@@ -777,6 +917,15 @@ function InspectorNote({ note }: { note: NoteRecord | null }) {
         </InspectorSection>
       </InspectorBody>
       <InspectorActions>
+        <Btn variant="ai" onClick={() => onAskAssistant({
+          mode: "structure",
+          prompt: buildNoteRecommendationPrompt(note),
+          notice: `Prepared a prompt to turn this ${note.type} into records.`,
+          actionLabel: "Turn into records",
+          explanation: "Review the prepared prompt, then press the rainbow Codex button to get editable drafts.",
+        })}>
+          <Sparkles size={11} /> Turn into records
+        </Btn>
         <Btn onClick={() => navigator.clipboard?.writeText(note.path).catch(() => undefined)}>
           <Copy size={11} /> Copy path
         </Btn>

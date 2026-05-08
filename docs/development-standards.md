@@ -27,6 +27,7 @@
 - Do not turn operational data into decorative card grids when a table or row list is clearer.
 - Controls should have stable dimensions and deliberate typography.
 - Use restrained color: accent for primary actions, muted tones for metadata, warnings for readiness issues.
+- Destructive record actions should use danger styling, explain what will be removed, and require explicit confirmation before writing project files.
 - Keep keyboard shortcuts aligned with [`keyboard-shortcuts.md`](keyboard-shortcuts.md). Shortcuts may open explicit write workflows or submit visible forms, but must not perform hidden background rewrites.
 
 ## Feedback Patterns

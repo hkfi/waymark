@@ -19,7 +19,7 @@ export function Btn({
   className,
   children,
   ...rest
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "default" | "primary" | "ghost" }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "default" | "primary" | "ghost" | "ai" | "codex" | "danger" }) {
   const base =
     "h-7 px-2.5 rounded-[5px] inline-flex items-center gap-1.5 text-[12px] whitespace-nowrap border disabled:opacity-50 disabled:cursor-not-allowed";
   const variants: Record<string, string> = {
@@ -27,6 +27,12 @@ export function Btn({
       "border-line bg-surface-2 text-ink-soft hover:bg-surface-4 hover:text-ink",
     primary:
       "border-accent-deep bg-accent text-accent-ink font-semibold hover:brightness-110",
+    ai:
+      "border-ai-deep bg-ai-soft text-ai-fg font-semibold hover:bg-[oklch(0.76_0.12_225_/_0.22)] hover:text-ink shadow-[0_0_0_1px_oklch(0.72_0.12_225_/_0.08)]",
+    codex:
+      "codex-run-button font-semibold",
+    danger:
+      "border-[oklch(0.70_0.16_25_/_0.36)] bg-[oklch(0.70_0.16_25_/_0.10)] text-danger hover:bg-[oklch(0.70_0.16_25_/_0.18)] hover:text-ink font-semibold",
     ghost:
       "border-transparent bg-transparent text-ink-faint hover:bg-surface-2 hover:text-ink",
   };

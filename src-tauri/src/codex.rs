@@ -132,8 +132,10 @@ pub(crate) fn codex_login() -> Result<(), String> {
 }
 
 #[tauri::command]
-pub(crate) fn codex_run_structured(request: CodexRunRequest) -> Result<CodexRunResult, String> {
-    run_codex_exec(request, CLI_ROUTE)
+pub(crate) async fn codex_run_structured(request: CodexRunRequest) -> Result<CodexRunResult, String> {
+    tauri::async_runtime::spawn_blocking(move || run_codex_exec(request, CLI_ROUTE))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]

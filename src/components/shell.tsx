@@ -544,8 +544,8 @@ export function MainHeader({
         <Btn variant="ghost" onClick={onCapture}>
           <Plus size={13} /> Capture
         </Btn>
-        <Btn variant="ghost" onClick={onOpenAssistant} title="Open Assistant">
-          <Bot size={13} /> Assistant <CommandShortcutBadge value="⇧A" tone="subtle" />
+        <Btn variant="ai" onClick={onOpenAssistant} title="Ask Codex about this project">
+          <Bot size={13} /> Ask Codex <CommandShortcutBadge value="⇧A" tone="subtle" />
         </Btn>
         <Btn variant="primary" onClick={onSendHandoff} disabled={handoffDisabled}>
           <Sparkles size={11} /> <span className="max-w-[180px] truncate">{handoffLabel}</span> <CommandShortcutBadge value="↵" tone="primary" />

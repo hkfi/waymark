@@ -166,7 +166,7 @@ function MainHeaderRegion() {
         }
         modals.openCapture();
       }}
-      onOpenAssistant={() => selection.setInspectorMode("assistant")}
+      onOpenAssistant={() => selection.openAssistant()}
       onSendHandoff={actions.sendHandoff}
     />
   );
@@ -358,6 +358,7 @@ function InspectorRegion() {
       onToggleHandoffContext={actions.toggleHandoffContext}
       onStatus={actions.changeStatus}
       onEditTicket={selection.editTicket}
+      onDeleteTicket={actions.deleteTicket}
       onToggleContextHandoff={(link, included) =>
         actions.updateLink({
           ...link,
@@ -366,6 +367,9 @@ function InspectorRegion() {
       }
       onDeleteContextLink={actions.deleteLink}
       onSaved={() => workspace.refresh()}
+      assistantLaunchRequest={selection.assistantLaunchRequest}
+      onAssistantLaunchConsumed={selection.clearAssistantLaunchRequest}
+      onAskAssistant={selection.openAssistant}
     />
   );
 }
