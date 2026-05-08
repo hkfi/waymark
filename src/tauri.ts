@@ -27,6 +27,10 @@ export async function writeTextFile(path: string, contents: string) {
   return invoke<void>("write_text_file", { path, contents });
 }
 
+export async function removeFile(path: string) {
+  return invoke<void>("remove_file", { path });
+}
+
 export async function createDirAll(path: string) {
   return invoke<void>("create_dir_all", { path });
 }

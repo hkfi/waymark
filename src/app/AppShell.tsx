@@ -238,7 +238,7 @@ function MainContentRegion() {
               include_in_handoff: !included,
             })
           }
-          onDeleteLink={actions.deleteLink}
+          onDeleteContextRow={actions.deleteContextRow}
           selectedContextKey={selection.selectedContextKey}
           onSelectContext={selection.selectContext}
         />
@@ -359,13 +359,16 @@ function InspectorRegion() {
       onStatus={actions.changeStatus}
       onEditTicket={selection.editTicket}
       onDeleteTicket={actions.deleteTicket}
+      onDeletePromptReference={actions.deletePromptReference}
+      onDeleteContextRow={actions.deleteContextRow}
+      onDeleteThread={actions.deleteThread}
+      onDeleteNote={actions.deleteNote}
       onToggleContextHandoff={(link, included) =>
         actions.updateLink({
           ...link,
           include_in_handoff: !included,
         })
       }
-      onDeleteContextLink={actions.deleteLink}
       onSaved={() => workspace.refresh()}
       assistantLaunchRequest={selection.assistantLaunchRequest}
       onAssistantLaunchConsumed={selection.clearAssistantLaunchRequest}

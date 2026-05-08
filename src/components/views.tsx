@@ -22,7 +22,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
-import { contextRowKey, contextRows, type ContextRow } from "../contextRows";
+import { contextRowKey, contextRowRemoveConfirmation, contextRowRemoveLabel, contextRows, type ContextRow } from "../contextRows";
 import { openPath } from "../tauri";
 import type { LinkRecord, NoteRecord, ThreadRecord, Ticket, WaymarkProject, WorkspaceData } from "../types";
 import { ticketWarnings } from "../workspace";
@@ -101,7 +101,7 @@ export function CockpitContent({
   onAddLink,
   onOnboardRepo,
   onToggleLinkHandoff,
-  onDeleteLink,
+  onDeleteContextRow,
   selectedContextKey,
   onSelectContext,
 }: {
@@ -122,7 +122,7 @@ export function CockpitContent({
   onAddLink: () => void;
   onOnboardRepo: () => void;
   onToggleLinkHandoff: (link: LinkRecord, included: boolean) => void;
-  onDeleteLink: (link: LinkRecord) => void;
+  onDeleteContextRow: (row: ContextRow) => void;
   selectedContextKey: string | null;
   onSelectContext: (row: ContextRow) => void;
 }) {
@@ -165,7 +165,7 @@ export function CockpitContent({
         onAddLink={onAddLink}
         onOnboardRepo={onOnboardRepo}
         onToggleLinkHandoff={onToggleLinkHandoff}
-        onDeleteLink={onDeleteLink}
+        onDeleteContextRow={onDeleteContextRow}
         selectedContextKey={selectedContextKey}
         onSelectContext={onSelectContext}
       />
@@ -757,7 +757,7 @@ function ContextView({
   onAddLink,
   onOnboardRepo,
   onToggleLinkHandoff,
-  onDeleteLink,
+  onDeleteContextRow,
   selectedContextKey,
   onSelectContext,
 }: {
@@ -767,7 +767,7 @@ function ContextView({
   onAddLink: () => void;
   onOnboardRepo: () => void;
   onToggleLinkHandoff: (link: LinkRecord, included: boolean) => void;
-  onDeleteLink: (link: LinkRecord) => void;
+  onDeleteContextRow: (row: ContextRow) => void;
   selectedContextKey: string | null;
   onSelectContext: (row: ContextRow) => void;
 }) {
@@ -843,14 +843,15 @@ function ContextView({
                     <ArrowRight size={10} />
                   </IconButton>
                 ) : <ContextActionSpacer />}
-                {row.link ? (
+                {row.link || row.repo || row.ticket ? (
                   <IconButton
-                    label="Remove context item"
-                    tooltip="Remove from Context"
+                    label={contextRowRemoveLabel(row)}
+                    tooltip={contextRowRemoveLabel(row)}
+                    className="text-danger hover:bg-[oklch(0.70_0.16_25_/_0.12)] hover:text-danger"
                     onClick={(event) => {
                       event.stopPropagation();
-                      if (window.confirm(`Remove ${row.label} from Context?`)) {
-                        onDeleteLink(row.link as LinkRecord);
+                      if (window.confirm(contextRowRemoveConfirmation(row))) {
+                        onDeleteContextRow(row);
                       }
                     }}
                   >

@@ -17,6 +17,7 @@ pub fn run() {
             file_commands::path_exists,
             file_commands::read_text_file,
             file_commands::write_text_file,
+            file_commands::remove_file,
             file_commands::create_dir_all,
             file_commands::list_dir,
             file_commands::open_path,

@@ -179,6 +179,33 @@ tickets:
     linked_decisions: []
     linked_threads: []
     generated_prompts: []
+  - id: delete-memory-context-records
+    title: Delete Memory and Context records
+    status: done
+    priority: medium
+    summary: Extend explicit destructive actions beyond tickets so users can remove Context references, thread references, ideas, and decisions without deleting external project assets by implication.
+    acceptance_criteria:
+      - Context registry rows delete records from links.yaml with danger styling and clear confirmation copy.
+      - Repo Context rows can remove the project.yaml repo reference without deleting the repository folder.
+      - Ticket file Context rows can unlink a file path from tickets.yaml without deleting the file.
+      - Thread references can be deleted from threads.yaml while preserving summary files and unlinking ticket references.
+      - Idea and decision notes can be deleted from their Markdown files, with decisions also unlinked from tickets.
+      - Ticket inspectors expose generated prompt references and can remove a prompt reference without deleting the prompt file.
+      - Workspace file contract documents deletion behavior for project-memory records and references.
+    linked_files:
+      - docs/workspace-file-contract.md
+      - src-tauri/src/file_commands.rs
+      - src-tauri/src/lib.rs
+      - src/tauri.ts
+      - src/contextRows.ts
+      - src/app/AppShell.tsx
+      - src/app/hooks/useProjectActions.ts
+      - src/components/inspector.tsx
+      - src/components/views.tsx
+      - projects/waymark/tickets.yaml
+    linked_decisions: []
+    linked_threads: []
+    generated_prompts: []
   - id: guided-repo-onboarding
     title: Guided repo onboarding
     status: next

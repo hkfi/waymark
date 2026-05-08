@@ -1,6 +1,6 @@
 import { AlertTriangle, ArrowRight, CheckSquare, Copy, FileText, HardDrive, Link2, ListOrdered, MessageSquareText, Send, Sparkles, Square, Trash2, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
-import type { ContextRow } from "../contextRows";
+import { contextRowRemoveConfirmation, contextRowRemoveLabel, type ContextRow } from "../contextRows";
 import { openPath } from "../tauri";
 import type { LinkRecord, NoteRecord, ThreadRecord, Ticket, TicketStatus, WaymarkProject, WorkspaceData } from "../types";
 import { buildPrompt, type HandoffContextOption } from "../workspace";
@@ -27,8 +27,11 @@ export function Inspector({
   onStatus,
   onEditTicket,
   onDeleteTicket,
+  onDeletePromptReference,
+  onDeleteContextRow,
+  onDeleteThread,
+  onDeleteNote,
   onToggleContextHandoff,
-  onDeleteContextLink,
   onSaved,
   assistantLaunchRequest,
   onAssistantLaunchConsumed,
@@ -51,8 +54,11 @@ export function Inspector({
   onStatus: (ticket: Ticket, status: TicketStatus) => void;
   onEditTicket: (ticket: Ticket) => void;
   onDeleteTicket: (ticket: Ticket) => void;
+  onDeletePromptReference: (ticket: Ticket, promptPath: string) => void;
+  onDeleteContextRow: (row: ContextRow) => void;
+  onDeleteThread: (thread: ThreadRecord) => void;
+  onDeleteNote: (note: NoteRecord) => void;
   onToggleContextHandoff: (link: LinkRecord, included: boolean) => void;
-  onDeleteContextLink: (link: LinkRecord) => void;
   onSaved: () => Promise<void>;
   assistantLaunchRequest?: AssistantLaunchRequest | null;
   onAssistantLaunchConsumed: () => void;
@@ -128,6 +134,7 @@ export function Inspector({
             onSendHandoff={onSendHandoff}
             onEdit={onEditTicket}
             onDelete={onDeleteTicket}
+            onDeletePromptReference={onDeletePromptReference}
             onAskAssistant={onAskAssistant}
           />
         ) : (
@@ -155,15 +162,15 @@ export function Inspector({
           />
         </div>
       ) : mode === "thread" ? (
-        <InspectorThread project={project} ticket={ticket} selectedThread={thread} />
+        <InspectorThread project={project} ticket={ticket} selectedThread={thread} onDelete={onDeleteThread} />
       ) : mode === "context" ? (
         <InspectorContext
           row={contextRow}
           onToggleHandoff={onToggleContextHandoff}
-          onDeleteLink={onDeleteContextLink}
+          onDeleteRow={onDeleteContextRow}
         />
       ) : (
-        <InspectorNote note={note} onAskAssistant={onAskAssistant} />
+        <InspectorNote note={note} onAskAssistant={onAskAssistant} onDelete={onDeleteNote} />
       )}
     </aside>
   );
@@ -213,11 +220,11 @@ function InspectorEmpty({ children }: { children: ReactNode }) {
 function InspectorContext({
   row,
   onToggleHandoff,
-  onDeleteLink,
+  onDeleteRow,
 }: {
   row: ContextRow | null;
   onToggleHandoff: (link: LinkRecord, included: boolean) => void;
-  onDeleteLink: (link: LinkRecord) => void;
+  onDeleteRow: (row: ContextRow) => void;
 }) {
   if (!row) {
     return <InspectorEmpty>Select a context item to inspect.</InspectorEmpty>;
@@ -260,7 +267,9 @@ function InspectorContext({
             {sourceLabel} from <code>{sourceFile}</code>
             {row.source === "link"
               ? ". This row can be toggled or removed here."
-              : ". Edit the source record to change or remove it."}
+              : row.source === "project"
+                ? ". Removing it only updates the repo reference in Waymark."
+                : ". Unlinking it only updates the selected ticket."}
           </div>
         </InspectorSection>
       </InspectorBody>
@@ -284,16 +293,16 @@ function InspectorContext({
             {included ? "Make local" : "Include in prompt"}
           </Btn>
         ) : null}
-        {row.link ? (
+        {row.link || row.repo || row.ticket ? (
           <Btn
-            variant="ghost"
+            variant="danger"
             onClick={() => {
-              if (window.confirm(`Remove ${row.label} from Context?`)) {
-                onDeleteLink(row.link as LinkRecord);
+              if (window.confirm(contextRowRemoveConfirmation(row))) {
+                onDeleteRow(row);
               }
             }}
           >
-            <Trash2 size={11} /> Remove
+            <Trash2 size={11} /> {contextRowRemoveLabel(row)}
           </Btn>
         ) : null}
       </InspectorActions>
@@ -417,6 +426,7 @@ function InspectorTicket({
   onSendHandoff,
   onEdit,
   onDelete,
+  onDeletePromptReference,
   onAskAssistant,
 }: {
   project: WaymarkProject;
@@ -425,6 +435,7 @@ function InspectorTicket({
   onSendHandoff: () => void;
   onEdit: (ticket: Ticket) => void;
   onDelete: (ticket: Ticket) => void;
+  onDeletePromptReference: (ticket: Ticket, promptPath: string) => void;
   onAskAssistant: (request: AssistantLaunchInput) => void;
 }) {
   const linkedDecisions = project.decisions.filter((decision) =>
@@ -577,6 +588,40 @@ files: [${(ticket.linked_files ?? []).join(", ")}]
 prompts: ${ticket.generated_prompts?.length ?? 0}`}
           </pre>
         </InspectorSection>
+
+        {(ticket.generated_prompts ?? []).length > 0 ? (
+          <InspectorSection label="Generated prompts">
+            <Card>
+              {(ticket.generated_prompts ?? []).map((promptPath) => (
+                <DataRow key={promptPath} cols="grid-cols-link" height={30} paddingX={10} gap={8}>
+                  <Cell mono size={9.5} tone="mute" className="uppercase tracking-[0.07em]">prompt</Cell>
+                  <Cell mono size={11} tone="faint">md</Cell>
+                  <Cell tone="soft" title={promptPath}>{promptPath}</Cell>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button
+                      onClick={() => openPath(resolveProjectPath(project, promptPath))}
+                      title="Open prompt"
+                      className="inline-flex items-center gap-1 px-1 py-0.5 text-ink-faint rounded-[3px] text-[11px] hover:bg-surface-3 hover:text-ink cursor-pointer"
+                    >
+                      <ArrowRight size={10} />
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (window.confirm(`Remove generated prompt reference "${promptPath}" from this ticket? The prompt Markdown file is not deleted.`)) {
+                          onDeletePromptReference(ticket, promptPath);
+                        }
+                      }}
+                      title="Remove prompt reference"
+                      className="inline-flex items-center gap-1 px-1 py-0.5 text-danger rounded-[3px] text-[11px] hover:bg-[oklch(0.70_0.16_25_/_0.12)] cursor-pointer"
+                    >
+                      <Trash2 size={10} />
+                    </button>
+                  </div>
+                </DataRow>
+              ))}
+            </Card>
+          </InspectorSection>
+        ) : null}
       </InspectorBody>
 
       <InspectorActions>
@@ -776,10 +821,12 @@ function InspectorThread({
   project,
   ticket,
   selectedThread,
+  onDelete,
 }: {
   project: WaymarkProject;
   ticket: Ticket | null;
   selectedThread: ThreadRecord | null;
+  onDelete: (thread: ThreadRecord) => void;
 }) {
   const linked = ticket
     ? project.threads.find((thread) => ticket.linked_threads?.includes(thread.id))
@@ -856,6 +903,16 @@ function InspectorThread({
             <ArrowRight size={11} /> Open URL
           </Btn>
         ) : null}
+        <Btn
+          variant="danger"
+          onClick={() => {
+            if (window.confirm(`Delete thread reference "${thread.title}"? This removes it from threads.yaml and unlinks it from tickets. The summary file is not deleted.`)) {
+              onDelete(thread);
+            }
+          }}
+        >
+          <Trash2 size={11} /> Delete reference
+        </Btn>
       </InspectorActions>
     </>
   );
@@ -864,9 +921,11 @@ function InspectorThread({
 function InspectorNote({
   note,
   onAskAssistant,
+  onDelete,
 }: {
   note: NoteRecord | null;
   onAskAssistant: (request: AssistantLaunchInput) => void;
+  onDelete: (note: NoteRecord) => void;
 }) {
   if (!note) return <InspectorEmpty>Select a decision or idea to inspect.</InspectorEmpty>;
   return (
@@ -931,6 +990,19 @@ function InspectorNote({
         </Btn>
         <Btn variant="ghost" onClick={() => openPath(note.path)}>
           <ArrowRight size={11} /> Open file
+        </Btn>
+        <Btn
+          variant="danger"
+          onClick={() => {
+            const cleanup = note.type === "decision"
+              ? " This also unlinks the decision from tickets. Linked tickets are not deleted."
+              : " Linked tickets are not deleted.";
+            if (window.confirm(`Delete ${note.type} "${note.title}"? This removes the Markdown file.${cleanup}`)) {
+              onDelete(note);
+            }
+          }}
+        >
+          <Trash2 size={11} /> Delete {note.type}
         </Btn>
       </InspectorActions>
     </>

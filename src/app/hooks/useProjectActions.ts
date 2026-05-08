@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { isTauri } from "../../tauri";
-import type { LinkRecord, RepoRef, ThreadRecord, Ticket, TicketStatus, WaymarkProject } from "../../types";
+import type { ContextRow } from "../../contextRows";
+import { isTauri, removeFile } from "../../tauri";
+import type { LinkRecord, NoteRecord, RepoRef, ThreadRecord, Ticket, TicketStatus, WaymarkProject } from "../../types";
 import {
   addReposToProject,
   buildHandoffContextOptions,
@@ -8,6 +9,7 @@ import {
   createNote,
   saveGeneratedPrompts,
   saveLinks,
+  saveProjectConfig,
   saveThreads,
   saveTickets,
 } from "../../workspace";
@@ -195,6 +197,35 @@ export function useProjectActions({
     [clearEditingTicket, project, refresh, setError, setNotice],
   );
 
+  const deletePromptReference = useCallback(
+    async (ticket: Ticket, promptPath: string) => {
+      if (!project) return;
+      if (!isTauri()) {
+        setNotice("Run Waymark through Tauri to update generated prompt references.");
+        return;
+      }
+
+      try {
+        await saveTickets(
+          project,
+          project.tickets.map((candidate) =>
+            candidate.id === ticket.id
+              ? {
+                  ...candidate,
+                  generated_prompts: (candidate.generated_prompts ?? []).filter((path) => path !== promptPath),
+                }
+              : candidate,
+          ),
+        );
+        setNotice(`Removed prompt reference from ${ticket.title}. Prompt file was not deleted.`);
+        await refresh();
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    },
+    [project, refresh, setError, setNotice],
+  );
+
   const capture = useCallback(
     async (payload: CapturePayload) => {
       if (!project) return;
@@ -320,17 +351,90 @@ export function useProjectActions({
     [project, refresh, setError, setNotice],
   );
 
-  const deleteLink = useCallback(
-    async (link: LinkRecord) => {
+  const deleteContextRow = useCallback(
+    async (row: ContextRow) => {
       if (!project) return;
       if (!isTauri()) {
-        setNotice("Run Waymark through Tauri to remove context links.");
+        setNotice("Run Waymark through Tauri to update local project context.");
         return;
       }
 
       try {
-        await saveLinks(project, project.links.filter((item) => item.id !== link.id));
-        setNotice(`Removed ${link.label}.`);
+        if (row.source === "link" && row.link) {
+          await saveLinks(project, project.links.filter((item) => item.id !== row.link?.id));
+          setNotice(`Deleted context item ${row.label}.`);
+        } else if (row.source === "project" && row.repo) {
+          const repos = (project.config.repos ?? []).filter((repo) => repo.id !== row.repo?.id);
+          await saveProjectConfig(project, { ...project.config, repos });
+          setNotice(`Removed repo reference ${row.label}.`);
+        } else if (row.source === "ticket" && row.ticket) {
+          await saveTickets(
+            project,
+            project.tickets.map((ticket) =>
+              ticket.id === row.ticket?.id
+                ? { ...ticket, linked_files: (ticket.linked_files ?? []).filter((file) => file !== row.value) }
+                : ticket,
+            ),
+          );
+          setNotice(`Unlinked ${row.value} from ${row.label}.`);
+        } else {
+          setError("This context row cannot be removed from Waymark yet.");
+          return;
+        }
+        await refresh();
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    },
+    [project, refresh, setError, setNotice],
+  );
+
+  const deleteThread = useCallback(
+    async (thread: ThreadRecord) => {
+      if (!project) return;
+      if (!isTauri()) {
+        setNotice("Run Waymark through Tauri to delete local thread references.");
+        return;
+      }
+
+      try {
+        await saveThreads(project, project.threads.filter((candidate) => candidate.id !== thread.id));
+        await saveTickets(
+          project,
+          project.tickets.map((ticket) => ({
+            ...ticket,
+            linked_threads: (ticket.linked_threads ?? []).filter((threadId) => threadId !== thread.id),
+          })),
+        );
+        setNotice(`Deleted thread reference ${thread.title}. Summary file was not deleted.`);
+        await refresh();
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    },
+    [project, refresh, setError, setNotice],
+  );
+
+  const deleteNote = useCallback(
+    async (note: NoteRecord) => {
+      if (!project) return;
+      if (!isTauri()) {
+        setNotice(`Run Waymark through Tauri to delete local ${note.type} files.`);
+        return;
+      }
+
+      try {
+        await removeFile(note.path);
+        if (note.type === "decision") {
+          await saveTickets(
+            project,
+            project.tickets.map((ticket) => ({
+              ...ticket,
+              linked_decisions: (ticket.linked_decisions ?? []).filter((decisionId) => decisionId !== note.id),
+            })),
+          );
+        }
+        setNotice(`Deleted ${note.type} ${note.title}.`);
         await refresh();
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
@@ -372,11 +476,14 @@ export function useProjectActions({
       changeStatus,
       saveTicket,
       deleteTicket,
+      deletePromptReference,
       capture,
       addFile,
       addLink,
       updateLink,
-      deleteLink,
+      deleteContextRow,
+      deleteThread,
+      deleteNote,
       onboardRepo,
       handoffOptions,
       selectedHandoffContextIds,
@@ -387,8 +494,11 @@ export function useProjectActions({
       addLink,
       capture,
       changeStatus,
+      deleteContextRow,
       deleteTicket,
-      deleteLink,
+      deleteNote,
+      deletePromptReference,
+      deleteThread,
       handoffOptions,
       onboardRepo,
       saveTicket,

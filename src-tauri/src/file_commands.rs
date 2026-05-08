@@ -33,6 +33,17 @@ pub(crate) fn write_text_file(path: String, contents: String) -> Result<(), Stri
 }
 
 #[tauri::command]
+pub(crate) fn remove_file(path: String) -> Result<(), String> {
+    let path = expand_tilde(&path);
+    let file_path = Path::new(&path);
+    if file_path.is_dir() {
+        return Err("Expected a file path, received a directory.".to_string());
+    }
+
+    fs::remove_file(file_path).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub(crate) fn create_dir_all(path: String) -> Result<(), String> {
     fs::create_dir_all(expand_tilde(&path)).map_err(|error| error.to_string())
 }

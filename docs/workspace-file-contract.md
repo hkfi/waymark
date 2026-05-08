@@ -257,6 +257,18 @@ Thread summaries are concise Markdown notes referenced from `threads.yaml.summar
 Codex tightened workspace validation warnings and documented the canonical file contract.
 ```
 
+## Deletion Behavior
+
+Waymark delete actions are explicit project-memory writes. They should confirm what will be removed and avoid deleting external project assets by implication.
+
+- Deleting a ticket removes the record from `tickets.yaml`; linked notes, prompt files, and thread summary files are left alone.
+- Deleting a Context registry item removes the record from `links.yaml`; the target file, URL, service, or deploy is not deleted.
+- Removing a repo reference updates `project.yaml.repos`; the repository folder is not deleted.
+- Unlinking a ticket file removes the path from `tickets.yaml.linked_files`; the file itself is not deleted.
+- Deleting a thread reference removes the record from `threads.yaml` and unlinks its id from tickets; any `summary_file` Markdown remains.
+- Deleting an idea or decision removes the Markdown file from `ideas/` or `decisions/`; deleting a decision also unlinks its id from tickets.
+- Removing a generated prompt reference updates `tickets.yaml.generated_prompts`; the prompt Markdown file remains in `ai/prompts/`.
+
 ## Validation Behavior
 
 Waymark should prefer specific warnings over silent drops:
