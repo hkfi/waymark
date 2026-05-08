@@ -46,6 +46,12 @@ Run the narrowest useful checks for your change. Standard checks:
 - `cargo check --manifest-path src-tauri/Cargo.toml`
 - `pnpm tauri build --debug` for native shell or Tauri config changes
 
+Additional focused checks:
+
+- `pnpm tauri dev` for visual inspection of changed UI workflows.
+- `cargo test --manifest-path src-tauri/Cargo.toml codex` for Codex/Assistant bridge changes.
+- Live Assistant smoke tests should run only with explicit user approval in a Tauri session, preferably against a disposable or sample workspace.
+
 ## GitNexus Workflow
 
 - If this repo has been indexed by GitNexus, use it for unfamiliar flows, broad refactors, symbol moves, or pre-commit scope checks.

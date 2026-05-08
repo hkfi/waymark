@@ -71,7 +71,7 @@ Use the sample to see Waymark's cockpit with projects, tickets, Memory records, 
 This repository is also a Waymark-readable workspace. Open the repo root:
 
 ```txt
-/Users/hirokifuruichi/code/waymark
+$HOME/code/waymark
 ```
 
 Waymark will read `waymark.yaml` and `projects/waymark/` so the app can be used to manage its own local tickets, Memory records, Context resources, and AI handoffs.
