@@ -10,6 +10,7 @@ Waymark exits MVP when all of these are true:
 - It can manage at least three real projects from one workspace.
 - Project overview, local tickets, ideas, decisions, AI thread references, and handoff generation are usable without editing YAML by hand for normal flows.
 - Generated handoff prompts are useful enough to start Codex/Claude implementation threads with less manual context gathering.
+- The Codex-backed Assistant can turn brainstorming into review-gated tickets, decisions, ideas, thread references, or summaries without making AI required for manual workflows.
 - File contract changes have slowed down; breaking schema changes are rare and intentional.
 - Validation errors are understandable and point to the relevant file or missing field.
 - Important project state remains readable and editable outside Waymark.

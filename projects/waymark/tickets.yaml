@@ -102,6 +102,30 @@ tickets:
     linked_threads:
       - assistant-verification-2026-05-05
     generated_prompts: []
+  - id: contextual-codex-recommendations
+    title: Contextual Codex recommendations
+    status: next
+    priority: high
+    summary: Let meaningful project-memory fields ask Codex for reviewable recommendations that turn brainstorming into tickets, decisions, summaries, and next-step options.
+    acceptance_criteria:
+      - Prose-heavy project-memory fields can offer a contextual Codex recommendation action without making mechanical fields noisy.
+      - Recommendation prompts include the selected project, current field value, and relevant ticket, memory, thread, or handoff context after the user confirms the Codex notice.
+      - Codex can propose several scoped options for next steps, missing decisions, ticket drafts, acceptance criteria, or wording improvements.
+      - Suggestions enter an editable review flow before insertion or save.
+      - Accepted tickets, ideas, decisions, and summaries can link back to a saved Codex thread reference when available.
+      - Manual capture remains usable when Codex is unavailable.
+      - Documentation records the conversation-to-structured-memory workflow and the quiet-field guardrail for IDs, slugs, paths, URLs, and tags.
+    linked_files:
+      - docs/ai-workflows.md
+      - docs/mvp-boundaries.md
+      - docs/roadmap.md
+      - src/components/assistant.tsx
+      - src/components/modals.tsx
+      - src/components/inspector.tsx
+    linked_decisions:
+      - contextual-codex-recommendations
+    linked_threads: []
+    generated_prompts: []
   - id: guided-repo-onboarding
     title: Guided repo onboarding
     status: next

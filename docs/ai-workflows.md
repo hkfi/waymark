@@ -52,6 +52,33 @@ The intended loop:
 6. User reviews, edits, and selects proposed tickets, ideas, decisions, thread references, and summaries.
 7. Waymark writes only the accepted records to Markdown/YAML through its existing controlled write helpers.
 
+## Conversation To Structured Memory
+
+The ideal Assistant workflow is a progression from open-ended conversation to structured project memory.
+
+Early in a project, the human may spend most of the time brainstorming with Codex: exploring product direction, tradeoffs, architecture, UX, scope, risks, and next steps. Waymark should help turn the useful outcomes of that conversation into durable records: decisions, ideas, tickets, acceptance criteria, project context, handoff prompts, thread references, and concise thread summaries.
+
+As a project matures, Waymark should use the accumulated project memory to make Codex recommendations more contextual. The Assistant should increasingly be able to suggest likely next moves, missing decisions, candidate tickets, or alternate implementation paths. The human should remain the final editor and approver, but the workflow can shift from blank-page writing toward choosing, editing, and accepting from several good options.
+
+Meaningful project-memory fields may offer contextual Codex recommendations. Good targets include ticket summaries, acceptance criteria, idea notes, decision drafts, thread summaries, handoff prompt sections, project focus, and repo onboarding summaries. Mechanical fields such as IDs, slugs, file paths, URLs, and tags should stay quiet by default; Codex may suggest values during a review flow, but the UI should not make every small input feel like an AI prompt box.
+
+Accepted records should preserve provenance when practical. If a ticket, decision, idea, or summary came from a Codex conversation, Waymark should let the user link it to a saved thread reference or summary so future handoffs can understand where the rationale came from without assuming Waymark can read private Codex history.
+
+Contextual recommendations should:
+
+- run through the same explicit Codex context notice and local Codex auth model as the Assistant drawer
+- return reviewable drafts or insertable suggestions, not direct file edits
+- make it easy to accept, edit, reject, or link suggestions to thread references
+- prefer several scoped options with short rationale when the user is deciding what to do next
+- keep manual capture and editing usable when Codex is unavailable
+
+Contextual recommendations should not:
+
+- silently change project memory files
+- replace human review of decisions, tickets, or handoff context
+- require Waymark-owned AI credentials or hosted services
+- imply access to private Codex app threads unless the user explicitly saved a thread reference or summary
+
 Assistant outputs should:
 
 - propose project-memory records, not directly edit files

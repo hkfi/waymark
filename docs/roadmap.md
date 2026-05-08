@@ -47,6 +47,7 @@ Likely work:
 - improve handoff context picker
 - refine the simplified Overview/Tickets/Memory/Context cockpit IA
 - harden the Codex Assistant review drawer and CLI fallback behavior
+- add contextual Codex recommendations to meaningful project-memory fields
 - include project standards in generated handoffs
 - make the self-workspace more complete
 - add focused UI smoke tests or manual QA checklist
