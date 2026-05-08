@@ -196,13 +196,11 @@ function InspectorContext({
   const included = Boolean(row.includeInHandoff);
   const sourceLabel = {
     project: "Project repo reference",
-    legacy: "Legacy project link",
     link: "Context registry item",
     ticket: "Ticket-linked file",
   }[row.source];
   const sourceFile = {
     project: "project.yaml",
-    legacy: "project.yaml",
     link: "links.yaml",
     ticket: "tickets.yaml",
   }[row.source];

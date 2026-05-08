@@ -458,7 +458,7 @@ function aggregateNavCounts(workspace: WorkspaceData | null) {
       context += ticket.linked_files?.length ?? 0;
     }
     memory += project.decisions.length + project.threads.length + project.ideas.length;
-    context += (project.config.repos?.length ?? 0) + Object.keys(project.config.links ?? {}).length + project.links.length;
+    context += (project.config.repos?.length ?? 0) + project.links.length;
     context += project.decisions.length + project.ideas.length;
     warnings += project.warnings.length;
   }

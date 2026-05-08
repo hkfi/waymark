@@ -14,3 +14,10 @@ threads:
     summary_file: ai/thread-summaries/2026-05-05-guided-repo-onboarding.md
     linked_tickets:
       - guided-repo-onboarding
+  - id: file-contract-validation-2026-05-05
+    provider: codex
+    title: File contract validation pass
+    status: active
+    summary_file: ai/thread-summaries/2026-05-05-file-contract-validation.md
+    linked_tickets:
+      - refine-workspace-file-contract

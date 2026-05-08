@@ -2,7 +2,7 @@ import type { LinkRecord, WaymarkProject } from "./types";
 import { resolveProjectPath } from "./app/model";
 import { shouldIncludeContextInHandoff } from "./workspace";
 
-export type ContextRowSource = "project" | "legacy" | "link" | "ticket";
+export type ContextRowSource = "project" | "link" | "ticket";
 
 export type ContextRow = {
   kind: string;
@@ -29,15 +29,6 @@ export function contextRows(project: WaymarkProject): ContextRow[] {
       actionPath: repo.path ?? repo.url,
       includeInHandoff: true,
       source: "project" as const,
-    })),
-    ...Object.entries(project.config.links ?? {}).map(([id, url]) => ({
-      kind: "legacy",
-      id,
-      label: id,
-      value: url,
-      actionPath: url,
-      includeInHandoff: true,
-      source: "legacy" as const,
     })),
     ...project.links.map((link) => ({
       kind: link.type,

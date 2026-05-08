@@ -656,7 +656,7 @@ function ThreadsView({
   );
 }
 
-const CONTEXT_KIND_META: Record<LinkRecord["type"] | "legacy" | "ticket file", { label: string; Icon: LucideIcon }> = {
+const CONTEXT_KIND_META: Record<LinkRecord["type"] | "ticket file", { label: string; Icon: LucideIcon }> = {
   repo: { label: "Repository", Icon: GitBranch },
   file: { label: "File", Icon: FileText },
   deploy: { label: "Deploy", Icon: Rocket },
@@ -666,7 +666,6 @@ const CONTEXT_KIND_META: Record<LinkRecord["type"] | "legacy" | "ticket file", {
   service: { label: "Service", Icon: Server },
   domain: { label: "Domain", Icon: Globe2 },
   other: { label: "Other context", Icon: Box },
-  legacy: { label: "Legacy link", Icon: Link2 },
   "ticket file": { label: "Ticket file", Icon: FileCheck2 },
 };
 

@@ -22,14 +22,17 @@ import type {
 const workspaceSchema = z.object({
   version: z.number().default(1),
   name: z.string().min(1),
-  projects_dir: z.string().default("projects"),
+  projects_dir: z.string().min(1).default("projects"),
 });
 
 const repoSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
-  path: z.string().optional(),
+  path: z.string().min(1).optional(),
   url: z.string().url().optional(),
+}).refine((repo) => Boolean(repo.path || repo.url), {
+  message: "Repo records need a path or url.",
+  path: ["path"],
 });
 
 const projectSchema = z.object({
@@ -42,7 +45,6 @@ const projectSchema = z.object({
   current_focus: z.string().optional(),
   tags: z.array(z.string()).optional(),
   repos: z.array(repoSchema).optional(),
-  links: z.record(z.string()).optional(),
 });
 
 const ticketSchema = z.object({
@@ -78,6 +80,7 @@ const linkSchema = z.object({
   include_in_handoff: z.boolean().optional(),
 }).refine((link) => Boolean(link.url || link.path), {
   message: "Link records need a url or path.",
+  path: ["path"],
 });
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -124,11 +127,6 @@ export function joinPath(...parts: string[]) {
     .replace(":/", "://");
 }
 
-function parseYaml<T>(raw: string, fallback: T): T {
-  const parsed = yaml.load(raw);
-  return (parsed ?? fallback) as T;
-}
-
 function dumpYaml(value: unknown) {
   return yaml.dump(value, {
     lineWidth: 100,
@@ -154,6 +152,22 @@ function basename(path: string) {
   return parts[parts.length - 1] ?? "";
 }
 
+function fieldPath(parts: Array<string | number>) {
+  if (!parts.length) return "(root)";
+  return parts.reduce((path, part) => {
+    if (typeof part === "number") return `${path}[${part}]`;
+    return path ? `${path}.${part}` : part;
+  }, "");
+}
+
+function zodWarnings(file: string, issues: z.ZodIssue[], prefix: Array<string | number> = []) {
+  return issues.map((issue) => `${file}: ${fieldPath([...prefix, ...issue.path])}: ${issue.message}`);
+}
+
+function errorMessage(caught: unknown) {
+  return caught instanceof Error ? caught.message : String(caught);
+}
+
 function uniqueRepoId(baseId: string, repos: RepoRef[]) {
   const base = slugify(baseId) || "repo";
   const existing = new Set(repos.map((repo) => repo.id));
@@ -164,7 +178,16 @@ function uniqueRepoId(baseId: string, repos: RepoRef[]) {
   return `${base}-${index}`;
 }
 
-function frontmatter(raw: string) {
+function parseYaml<T>(raw: string, fallback: T, source = "YAML"): T {
+  try {
+    const parsed = yaml.load(raw);
+    return (parsed ?? fallback) as T;
+  } catch (caught) {
+    throw new Error(`${source}: invalid YAML: ${errorMessage(caught)}`);
+  }
+}
+
+function frontmatter(raw: string, source = "Markdown frontmatter") {
   if (!raw.startsWith("---")) {
     return { meta: {}, body: raw.trim() };
   }
@@ -174,31 +197,40 @@ function frontmatter(raw: string) {
     return { meta: {}, body: raw.trim() };
   }
 
-  const meta = parseYaml<Record<string, unknown>>(raw.slice(3, end), {});
+  const meta = parseYaml<Record<string, unknown>>(raw.slice(3, end), {}, source);
   const body = raw.slice(end + 4).trim();
   return { meta, body };
 }
 
-async function readYamlIfPresent<T>(path: string, fallback: T) {
-  if (!(await pathExists(path))) {
-    return fallback;
-  }
-
-  return parseYaml<T>(await readTextFile(path), fallback);
+function relativeProjectPath(projectPath: string, path: string) {
+  const prefix = `${normalizeRepoPath(projectPath)}/`;
+  return path.startsWith(prefix) ? path.slice(prefix.length) : path;
 }
 
 async function loadNotes(projectPath: string, type: "idea" | "decision") {
   const folder = joinPath(projectPath, type === "idea" ? "ideas" : "decisions");
   if (!(await pathExists(folder))) {
-    return [];
+    return { notes: [], warnings: [] };
   }
 
   const entries = (await listDir(folder)).filter((entry) => !entry.is_dir && entry.name.endsWith(".md"));
   const notes: NoteRecord[] = [];
+  const warnings: string[] = [];
 
   for (const entry of entries) {
     const raw = await readTextFile(entry.path);
-    const { meta, body } = frontmatter(raw);
+    const file = relativeProjectPath(projectPath, entry.path);
+    let meta: Record<string, unknown>;
+    let body: string;
+    try {
+      ({ meta, body } = frontmatter(raw, `${file}: frontmatter`));
+    } catch (caught) {
+      warnings.push(errorMessage(caught));
+      continue;
+    }
+    if (meta.linked_tickets !== undefined && !Array.isArray(meta.linked_tickets)) {
+      warnings.push(`${file}: linked_tickets: Expected a list of ticket ids.`);
+    }
     const titleFromBody = body.match(/^#\s+(.+)$/m)?.[1];
     notes.push({
       id: String(meta.id ?? entry.name.replace(/\.md$/, "")),
@@ -214,33 +246,135 @@ async function loadNotes(projectPath: string, type: "idea" | "decision") {
     });
   }
 
-  return notes.sort((left, right) => (right.date ?? "").localeCompare(left.date ?? ""));
+  return {
+    notes: notes.sort((left, right) => (right.date ?? "").localeCompare(left.date ?? "")),
+    warnings,
+  };
+}
+
+async function loadRecordList<T>(
+  projectPath: string,
+  fileName: string,
+  key: string,
+  schema: z.ZodType<T>,
+) {
+  const filePath = joinPath(projectPath, fileName);
+  if (!(await pathExists(filePath))) {
+    return { records: [] as T[], warnings: [] as string[] };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = parseYaml<unknown>(await readTextFile(filePath), {}, fileName);
+  } catch (caught) {
+    return { records: [] as T[], warnings: [errorMessage(caught)] };
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { records: [] as T[], warnings: [`${fileName}: (root): Expected a YAML object.`] };
+  }
+
+  const data = parsed as Record<string, unknown>;
+  const warnings: string[] = [];
+  if (data.version !== undefined && typeof data.version !== "number") {
+    warnings.push(`${fileName}: version: Expected a number.`);
+  }
+
+  const rawRecords = data[key] ?? [];
+  if (!Array.isArray(rawRecords)) {
+    return { records: [] as T[], warnings: [...warnings, `${fileName}: ${key}: Expected a list.`] };
+  }
+
+  const records: T[] = [];
+  rawRecords.forEach((record, index) => {
+    const parsedRecord = schema.safeParse(record);
+    if (parsedRecord.success) {
+      records.push(parsedRecord.data);
+      return;
+    }
+    warnings.push(...zodWarnings(fileName, parsedRecord.error.issues, [key, index]));
+  });
+
+  return { records, warnings };
+}
+
+function recordField(collection: string, id: string, field: string) {
+  return `${collection}[id="${id}"].${field}`;
+}
+
+function needsReadinessDetails(ticket: Ticket) {
+  return ["now", "next", "blocked"].includes(ticket.status);
+}
+
+function threadNeedsSummary(project: WaymarkProject, thread: ThreadRecord) {
+  const ticketIds = new Set(project.tickets.map((ticket) => ticket.id));
+  const linkedFromThread = (thread.linked_tickets ?? []).some((ticketId) => ticketIds.has(ticketId));
+  const linkedFromTicket = project.tickets.some((ticket) => ticket.linked_threads?.includes(thread.id));
+  return thread.status === "completed" || linkedFromThread || linkedFromTicket;
 }
 
 function validateProject(project: WaymarkProject) {
   const warnings = [...project.warnings];
   const { config } = project;
+  const folderName = basename(project.rootPath);
 
-  if (!config.current_focus) warnings.push("Project is missing a current focus.");
-  if (!config.repos?.length) warnings.push("Project has no linked repos.");
-  if (!Object.keys(config.links ?? {}).length && !project.links.length) warnings.push("Project has no important links.");
-  if (!project.tickets.length) warnings.push("Project has no local tickets.");
-  const hasProductionContext = Boolean(config.links?.production) || project.links.some((link) =>
+  if (folderName && folderName !== config.slug) {
+    warnings.push(`project.yaml: slug: Expected "${folderName}" to match the project folder.`);
+  }
+  if (!config.current_focus) warnings.push("project.yaml: current_focus: Missing current focus.");
+  if (!config.repos?.length) warnings.push("project.yaml: repos: No linked repos.");
+  if (!project.links.length) {
+    warnings.push("links.yaml: links: No typed context records.");
+  }
+  if (!project.tickets.length) warnings.push("tickets.yaml: tickets: No local tickets.");
+  const hasProductionContext = project.links.some((link) =>
     link.environment === "production" || link.id === "production" || link.type === "deploy",
   );
   if (["mvp", "alpha", "beta", "production"].includes(config.stage) && !hasProductionContext) {
-    warnings.push("Project has no production link.");
+    warnings.push("links.yaml: links: No production context.");
   }
 
+  const ticketIds = new Set(project.tickets.map((ticket) => ticket.id));
+  const decisionIds = new Set(project.decisions.map((decision) => decision.id));
+  const threadIds = new Set(project.threads.map((thread) => thread.id));
+
   for (const ticket of project.tickets) {
-    if (!ticket.summary) warnings.push(`Ticket "${ticket.title}" is missing a summary.`);
-    if (!ticket.acceptance_criteria?.length) {
-      warnings.push(`Ticket "${ticket.title}" has no acceptance criteria.`);
+    if (needsReadinessDetails(ticket)) {
+      if (!ticket.summary) warnings.push(`tickets.yaml: ${recordField("tickets", ticket.id, "summary")}: Missing ticket summary.`);
+      if (!ticket.acceptance_criteria?.length) {
+        warnings.push(`tickets.yaml: ${recordField("tickets", ticket.id, "acceptance_criteria")}: No acceptance criteria.`);
+      }
+    }
+    for (const decisionId of ticket.linked_decisions ?? []) {
+      if (!decisionIds.has(decisionId)) {
+        warnings.push(`tickets.yaml: ${recordField("tickets", ticket.id, "linked_decisions")}: Unknown decision id "${decisionId}".`);
+      }
+    }
+    for (const threadId of ticket.linked_threads ?? []) {
+      if (!threadIds.has(threadId)) {
+        warnings.push(`tickets.yaml: ${recordField("tickets", ticket.id, "linked_threads")}: Unknown thread id "${threadId}".`);
+      }
     }
   }
 
   for (const thread of project.threads) {
-    if (!thread.summary_file) warnings.push(`Thread "${thread.title}" has no summary file.`);
+    if (!thread.summary_file && threadNeedsSummary(project, thread)) {
+      warnings.push(`threads.yaml: ${recordField("threads", thread.id, "summary_file")}: Missing thread summary file.`);
+    }
+    for (const ticketId of thread.linked_tickets ?? []) {
+      if (!ticketIds.has(ticketId)) {
+        warnings.push(`threads.yaml: ${recordField("threads", thread.id, "linked_tickets")}: Unknown ticket id "${ticketId}".`);
+      }
+    }
+  }
+
+  for (const note of [...project.ideas, ...project.decisions]) {
+    const file = relativeProjectPath(project.rootPath, note.path);
+    for (const ticketId of note.linked_tickets ?? []) {
+      if (!ticketIds.has(ticketId)) {
+        warnings.push(`${file}: linked_tickets: Unknown ticket id "${ticketId}".`);
+      }
+    }
   }
 
   return warnings;
@@ -252,14 +386,18 @@ export async function loadWorkspace(rootPath: string): Promise<WorkspaceData> {
     throw new Error(`No waymark.yaml found at ${workspacePath}`);
   }
 
-  const rawWorkspace = parseYaml<WorkspaceConfig>(await readTextFile(workspacePath), {
-    version: 1,
-    name: "Waymark",
-    projects_dir: "projects",
-  });
+  const rawWorkspace = parseYaml<WorkspaceConfig>(
+    await readTextFile(workspacePath),
+    {
+      version: 1,
+      name: "Waymark",
+      projects_dir: "projects",
+    },
+    "waymark.yaml",
+  );
   const parsedWorkspace = workspaceSchema.safeParse(rawWorkspace);
   if (!parsedWorkspace.success) {
-    throw new Error(parsedWorkspace.error.issues.map((issue) => issue.message).join(", "));
+    throw new Error(zodWarnings("waymark.yaml", parsedWorkspace.error.issues).join(", "));
   }
 
   const config = parsedWorkspace.data;
@@ -275,38 +413,39 @@ export async function loadWorkspace(rootPath: string): Promise<WorkspaceData> {
       continue;
     }
 
-    const rawProject = parseYaml<ProjectConfig>(await readTextFile(projectYamlPath), {} as ProjectConfig);
+    let rawProject: ProjectConfig;
+    try {
+      rawProject = parseYaml<ProjectConfig>(
+        await readTextFile(projectYamlPath),
+        {} as ProjectConfig,
+        `projects/${dir.name}/project.yaml`,
+      );
+    } catch (caught) {
+      warnings.push(`Skipped ${dir.name}: ${errorMessage(caught)}`);
+      continue;
+    }
     const parsedProject = projectSchema.safeParse(rawProject);
     const projectWarnings: string[] = [];
     if (!parsedProject.success) {
-      projectWarnings.push(
-        ...parsedProject.error.issues.map((issue) => `project.yaml: ${issue.path.join(".")} ${issue.message}`),
-      );
+      warnings.push(...zodWarnings(`projects/${dir.name}/project.yaml`, parsedProject.error.issues));
       continue;
     }
 
-    const linksYaml = await readYamlIfPresent<{ links?: LinkRecord[] }>(joinPath(dir.path, "links.yaml"), {
-      links: [],
-    });
-    const ticketsYaml = await readYamlIfPresent<{ tickets?: Ticket[] }>(joinPath(dir.path, "tickets.yaml"), {
-      tickets: [],
-    });
-    const threadsYaml = await readYamlIfPresent<{ threads?: ThreadRecord[] }>(joinPath(dir.path, "threads.yaml"), {
-      threads: [],
-    });
-
-    const links = (linksYaml.links ?? []).filter((link) => linkSchema.safeParse(link).success);
-    const tickets = (ticketsYaml.tickets ?? []).filter((ticket) => ticketSchema.safeParse(ticket).success);
-    const threads = (threadsYaml.threads ?? []).filter((thread) => threadSchema.safeParse(thread).success);
+    const links = await loadRecordList<LinkRecord>(dir.path, "links.yaml", "links", linkSchema);
+    const tickets = await loadRecordList<Ticket>(dir.path, "tickets.yaml", "tickets", ticketSchema);
+    const threads = await loadRecordList<ThreadRecord>(dir.path, "threads.yaml", "threads", threadSchema);
+    const ideas = await loadNotes(dir.path, "idea");
+    const decisions = await loadNotes(dir.path, "decision");
+    projectWarnings.push(...links.warnings, ...tickets.warnings, ...threads.warnings, ...ideas.warnings, ...decisions.warnings);
 
     const project: WaymarkProject = {
       rootPath: dir.path,
       config: parsedProject.data,
-      links,
-      tickets,
-      threads,
-      ideas: await loadNotes(dir.path, "idea"),
-      decisions: await loadNotes(dir.path, "decision"),
+      links: links.records,
+      tickets: tickets.records,
+      threads: threads.records,
+      ideas: ideas.notes,
+      decisions: decisions.notes,
       warnings: projectWarnings,
     };
 
@@ -333,6 +472,7 @@ export async function createSampleWorkspace(rootPath: string) {
   await createDirAll(joinPath(rootPath, "projects", "glossa", "ideas"));
   await createDirAll(joinPath(rootPath, "projects", "glossa", "decisions"));
   await createDirAll(joinPath(rootPath, "projects", "openclaw", "ai", "prompts"));
+  await createDirAll(joinPath(rootPath, "projects", "openclaw", "ai", "thread-summaries"));
   await createDirAll(joinPath(rootPath, "projects", "openclaw", "ideas"));
   await createDirAll(joinPath(rootPath, "projects", "openclaw", "decisions"));
 
@@ -356,10 +496,6 @@ export async function createSampleWorkspace(rootPath: string) {
         { id: "web", name: "Web app", path: "~/Code/glossa-web", url: "https://github.com/example/glossa-web" },
         { id: "mobile", name: "Mobile app", path: "~/Code/glossa-mobile", url: "https://github.com/example/glossa-mobile" },
       ],
-      links: {
-        production: "https://glossa.app",
-        design: "https://figma.com/example",
-      },
     }),
   );
 
@@ -406,6 +542,21 @@ export async function createSampleWorkspace(rootPath: string) {
     dumpYaml({
       version: 1,
       links: [
+        {
+          id: "production-app",
+          label: "Production app",
+          url: "https://glossa.app",
+          type: "deploy",
+          environment: "production",
+          include_in_handoff: true,
+        },
+        {
+          id: "design",
+          label: "Design file",
+          url: "https://figma.com/example",
+          type: "design",
+          include_in_handoff: true,
+        },
         {
           id: "vercel",
           label: "Vercel production",
@@ -487,7 +638,6 @@ export async function createSampleWorkspace(rootPath: string) {
       current_focus: "Define the widget API and demo embed flow.",
       tags: ["widget", "ai", "saas"],
       repos: [{ id: "widget", name: "Widget repo", path: "~/Code/openclaw", url: "https://github.com/example/openclaw" }],
-      links: {},
     }),
   );
 
@@ -718,8 +868,26 @@ export async function createNote(
   await writeTextFile(path, markdown);
 }
 
+async function allocateGeneratedPromptPath(
+  project: WaymarkProject,
+  ticket: Ticket,
+  reservedPaths = new Set<string>(),
+) {
+  const basePath = `ai/prompts/${today()}-${ticket.id}`;
+  let suffix = 1;
+
+  while (true) {
+    const promptPath = `${basePath}${suffix === 1 ? "" : `-${suffix}`}.md`;
+    if (!reservedPaths.has(promptPath) && !(await pathExists(joinPath(project.rootPath, promptPath)))) {
+      reservedPaths.add(promptPath);
+      return promptPath;
+    }
+    suffix += 1;
+  }
+}
+
 export async function saveGeneratedPrompt(project: WaymarkProject, ticket: Ticket, prompt: string) {
-  const promptPath = `ai/prompts/${today()}-${ticket.id}.md`;
+  const promptPath = await allocateGeneratedPromptPath(project, ticket);
   await writeTextFile(joinPath(project.rootPath, promptPath), prompt);
   const tickets = project.tickets.map((candidate) =>
     candidate.id === ticket.id
@@ -737,21 +905,24 @@ export async function saveGeneratedPrompts(
   project: WaymarkProject,
   prompts: Array<{ ticket: Ticket; prompt: string }>,
 ) {
-  const saved = await Promise.all(
-    prompts.map(async ({ ticket, prompt }) => {
-      const promptPath = `ai/prompts/${today()}-${ticket.id}.md`;
-      await writeTextFile(joinPath(project.rootPath, promptPath), prompt);
-      return { ticketId: ticket.id, promptPath };
-    }),
-  );
+  const reservedPaths = new Set<string>();
+  const saved: Array<{ ticketId: string; promptPath: string }> = [];
+  for (const { ticket, prompt } of prompts) {
+    const promptPath = await allocateGeneratedPromptPath(project, ticket, reservedPaths);
+    await writeTextFile(joinPath(project.rootPath, promptPath), prompt);
+    saved.push({ ticketId: ticket.id, promptPath });
+  }
 
-  const promptByTicket = new Map(saved.map((entry) => [entry.ticketId, entry.promptPath]));
+  const promptsByTicket = new Map<string, string[]>();
+  for (const entry of saved) {
+    promptsByTicket.set(entry.ticketId, [...(promptsByTicket.get(entry.ticketId) ?? []), entry.promptPath]);
+  }
   const tickets = project.tickets.map((ticket) => {
-    const promptPath = promptByTicket.get(ticket.id);
-    if (!promptPath) return ticket;
+    const promptPaths = promptsByTicket.get(ticket.id);
+    if (!promptPaths?.length) return ticket;
     return {
       ...ticket,
-      generated_prompts: Array.from(new Set([...(ticket.generated_prompts ?? []), promptPath])),
+      generated_prompts: Array.from(new Set([...(ticket.generated_prompts ?? []), ...promptPaths])),
     };
   });
   await saveTickets(project, tickets);
@@ -762,12 +933,9 @@ export function buildPrompt(project: WaymarkProject, ticket: Ticket, selectedCon
   const linkedDecisions = project.decisions.filter((decision) => ticket.linked_decisions?.includes(decision.id));
   const linkedThreads = project.threads.filter((thread) => ticket.linked_threads?.includes(thread.id));
   const repos = project.config.repos ?? [];
-  const links = [
-    ...Object.entries(project.config.links ?? {}).map(([label, url]) => `${label}: ${url}`),
-    ...project.links
-      .filter(shouldIncludeContextInHandoff)
-      .map((link) => `${link.label} (${link.type})${link.url ? `: ${link.url}` : ""}${link.path ? `: ${link.path}` : ""}`),
-  ];
+  const links = project.links
+    .filter(shouldIncludeContextInHandoff)
+    .map((link) => `${link.label} (${link.type})${link.url ? `: ${link.url}` : ""}${link.path ? `: ${link.path}` : ""}`);
 
   const include = (key: string) => selectedContext.includes(key);
 
@@ -827,9 +995,23 @@ export function buildDemoWorkspace(): WorkspaceData {
         { id: "web", name: "Web app", path: "~/Code/glossa-web", url: "https://github.com/example/glossa-web" },
         { id: "mobile", name: "Mobile app", path: "~/Code/glossa-mobile", url: "https://github.com/example/glossa-mobile" },
       ],
-      links: { production: "https://glossa.app", design: "https://figma.com/example" },
     },
     links: [
+      {
+        id: "production-app",
+        label: "Production app",
+        url: "https://glossa.app",
+        type: "deploy",
+        environment: "production",
+        include_in_handoff: true,
+      },
+      {
+        id: "design",
+        label: "Design file",
+        url: "https://figma.com/example",
+        type: "design",
+        include_in_handoff: true,
+      },
       {
         id: "vercel",
         label: "Vercel production",
@@ -928,7 +1110,7 @@ export function buildDemoWorkspace(): WorkspaceData {
         body: "Prioritize the daily reading loop before roleplay or flashcards.",
       },
     ],
-    warnings: ['Ticket "Article import flow" has no acceptance criteria.'],
+    warnings: ['tickets.yaml: tickets[id="article-import"].acceptance_criteria: No acceptance criteria.'],
   };
   const openclaw: WaymarkProject = {
     rootPath: `${rootPath}/projects/openclaw`,
@@ -942,7 +1124,6 @@ export function buildDemoWorkspace(): WorkspaceData {
       current_focus: "Define the widget API and demo embed flow.",
       tags: ["widget", "ai", "saas"],
       repos: [{ id: "widget", name: "Widget repo", path: "~/Code/openclaw" }],
-      links: {},
     },
     links: [],
     tickets: [
@@ -965,7 +1146,7 @@ export function buildDemoWorkspace(): WorkspaceData {
     threads: [],
     ideas: [],
     decisions: [],
-    warnings: [],
+    warnings: ["links.yaml: links: No typed context records."],
   };
   return {
     rootPath,
@@ -977,8 +1158,10 @@ export function buildDemoWorkspace(): WorkspaceData {
 
 export function ticketWarnings(project: WaymarkProject, ticket: Ticket) {
   const warnings: string[] = [];
-  if (!ticket.summary) warnings.push("Missing ticket summary.");
-  if (!ticket.acceptance_criteria?.length) warnings.push("Missing acceptance criteria.");
+  if (needsReadinessDetails(ticket)) {
+    if (!ticket.summary) warnings.push("Missing ticket summary.");
+    if (!ticket.acceptance_criteria?.length) warnings.push("Missing acceptance criteria.");
+  }
   if (!project.config.repos?.length) warnings.push("Project has no linked repos.");
   if (!ticket.linked_files?.length) warnings.push("No linked files.");
   if (!ticket.linked_decisions?.length) warnings.push("No linked decisions.");

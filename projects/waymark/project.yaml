@@ -14,5 +14,3 @@ repos:
   - id: app
     name: Waymark app
     path: ~/code/waymark
-links:
-  repo: ~/code/waymark

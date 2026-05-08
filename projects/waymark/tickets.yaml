@@ -21,20 +21,35 @@ tickets:
     generated_prompts: []
   - id: refine-workspace-file-contract
     title: Refine workspace file contract
-    status: next
+    status: done
     priority: high
     summary: Tighten schemas and UX around project.yaml, tickets.yaml, links.yaml, threads.yaml, ideas, decisions, and generated prompts.
     acceptance_criteria:
       - File contract is documented with examples.
       - Validation errors point to specific files and fields.
+      - links.yaml is the only canonical typed Context registry during MVP.
+      - Generated prompt filenames cannot overwrite an existing prompt file.
+      - Missing ticket summary and acceptance criteria warnings only apply to now, next, and blocked tickets.
+      - Missing thread summary warnings apply to completed threads and threads linked to tickets.
       - Existing sample workspace remains readable.
       - Waymark self workspace remains readable.
     linked_files:
       - src/workspace.ts
+      - src/types.ts
+      - src/contextRows.ts
+      - src/components/inspector.tsx
+      - src/components/modals.tsx
+      - src/components/shell.tsx
+      - src/components/views.tsx
       - ARCHITECTURE.md
+      - docs/README.md
+      - docs/workspace-file-contract.md
+      - projects/waymark/project.yaml
     linked_decisions:
       - markdown-yaml-source-of-truth
-    linked_threads: []
+      - file-contract-readiness-warnings
+    linked_threads:
+      - file-contract-validation-2026-05-05
     generated_prompts: []
   - id: improve-handoff-context-picker
     title: Improve handoff context picker

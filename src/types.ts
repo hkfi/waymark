@@ -26,7 +26,6 @@ export interface ProjectConfig {
   current_focus?: string;
   tags?: string[];
   repos?: RepoRef[];
-  links?: Record<string, string>;
 }
 
 export interface LinkRecord {

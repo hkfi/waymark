@@ -6,6 +6,7 @@ This folder is the durable project context for humans and AI agents.
 
 - [`../ARCHITECTURE.md`](../ARCHITECTURE.md): system boundaries, file contract, data flow, and invariants.
 - [`development-standards.md`](development-standards.md): coding, UI, testing, and documentation standards.
+- [`workspace-file-contract.md`](workspace-file-contract.md): canonical Waymark workspace files, examples, context registry behavior, and validation expectations.
 - [`ai-workflows.md`](ai-workflows.md): how Waymark should support Codex/Claude-style work.
 - [`keyboard-shortcuts.md`](keyboard-shortcuts.md): cockpit navigation, capture, ticket, handoff, and modal shortcuts.
 - [`mvp-boundaries.md`](mvp-boundaries.md): what should not be built during MVP unless explicitly promoted.

@@ -66,6 +66,8 @@ Do not add SQLite as canonical storage.
 
 ## File Contract
 
+The durable field-level contract and examples live in [`docs/workspace-file-contract.md`](docs/workspace-file-contract.md). The stable shape is:
+
 Workspace root:
 
 ```txt
@@ -85,7 +87,7 @@ projects/
 
 The repo also includes `projects/waymark/`, a self-project memory folder that lets Waymark open and manage its own roadmap.
 
-`links.yaml` is the preferred typed Context registry. `project.yaml` may still contain a legacy `links` map for compatibility, but new app-created resources should be written to `links.yaml` as readable records:
+`links.yaml` is the typed Context registry. `project.yaml` stores project metadata and repo references, but it should not contain a `links` map during MVP. Context records belong in `links.yaml` so type, label, environment, path-or-URL, and handoff eligibility stay explicit.
 
 ```yaml
 version: 1

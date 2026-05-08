@@ -222,7 +222,6 @@ export function CreateProjectModal({
             current_focus: currentFocus.trim() || undefined,
             tags: [],
             repos: repo ? [repo] : [],
-            links: {},
           };
 
           setBusy(true);
