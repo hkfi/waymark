@@ -21,3 +21,10 @@ threads:
     summary_file: ai/thread-summaries/2026-05-05-file-contract-validation.md
     linked_tickets:
       - refine-workspace-file-contract
+  - id: handoff-context-picker-2026-05-08
+    provider: codex
+    title: Handoff context picker polish
+    status: completed
+    summary_file: ai/thread-summaries/2026-05-08-handoff-context-picker.md
+    linked_tickets:
+      - improve-handoff-context-picker

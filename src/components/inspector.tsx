@@ -1,9 +1,9 @@
-import { AlertTriangle, ArrowRight, Copy, FileText, HardDrive, Link2, ListOrdered, MessageSquareText, Send, Sparkles, Trash2, type LucideIcon } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckSquare, Copy, FileText, HardDrive, Link2, ListOrdered, MessageSquareText, Send, Sparkles, Square, Trash2, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import type { ContextRow } from "../contextRows";
 import { openPath } from "../tauri";
 import type { LinkRecord, NoteRecord, ThreadRecord, Ticket, TicketStatus, WaymarkProject, WorkspaceData } from "../types";
-import { buildPrompt } from "../workspace";
+import { buildPrompt, type HandoffContextOption } from "../workspace";
 import { activeLane, projectFile, resolveProjectPath, tokenEstimate, type InspectorMode } from "../app/model";
 import { AssistantView } from "./assistant";
 import { Btn, Card, Cell, CommandShortcutBadge, DataRow, EmptyRow, StatusChip, cx } from "./primitives";
@@ -20,6 +20,9 @@ export function Inspector({
   multi,
   workspace,
   onSendHandoff,
+  handoffOptions,
+  selectedHandoffContextIds,
+  onToggleHandoffContext,
   onStatus,
   onEditTicket,
   onToggleContextHandoff,
@@ -37,6 +40,9 @@ export function Inspector({
   multi: string[];
   workspace: WorkspaceData | null;
   onSendHandoff: () => void;
+  handoffOptions: HandoffContextOption[];
+  selectedHandoffContextIds: string[];
+  onToggleHandoffContext: (id: string) => void;
   onStatus: (ticket: Ticket, status: TicketStatus) => void;
   onEditTicket: (ticket: Ticket) => void;
   onToggleContextHandoff: (link: LinkRecord, included: boolean) => void;
@@ -123,6 +129,9 @@ export function Inspector({
           multi={multi}
           workspace={workspace}
           onSendHandoff={onSendHandoff}
+          handoffOptions={handoffOptions}
+          selectedHandoffContextIds={selectedHandoffContextIds}
+          onToggleHandoffContext={onToggleHandoffContext}
         />
       ) : mode === "assistant" ? (
         <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3">
@@ -512,12 +521,18 @@ function InspectorPrompt({
   multi,
   workspace,
   onSendHandoff,
+  handoffOptions,
+  selectedHandoffContextIds,
+  onToggleHandoffContext,
 }: {
   project: WaymarkProject;
   ticket: Ticket | null;
   multi: string[];
   workspace: WorkspaceData;
   onSendHandoff: () => void;
+  handoffOptions: HandoffContextOption[];
+  selectedHandoffContextIds: string[];
+  onToggleHandoffContext: (id: string) => void;
 }) {
   const tickets = project.tickets.filter((candidate) =>
     multi.length ? multi.includes(candidate.id) : ticket && candidate.id === ticket.id,
@@ -528,9 +543,11 @@ function InspectorPrompt({
   }
 
   const prompt = tickets
-    .map((entry) => buildPrompt(project, entry, ["repos", "files", "decisions", "threads", "links"]))
+    .map((entry) => buildPrompt(project, entry, selectedHandoffContextIds))
     .join("\n\n---\n\n");
   const tokens = tokenEstimate(prompt);
+  const selectedContext = new Set(selectedHandoffContextIds);
+  const includedCount = handoffOptions.filter((option) => selectedContext.has(option.id)).length;
 
   return (
     <>
@@ -544,10 +561,53 @@ function InspectorPrompt({
               <span>·</span>
               <span>~{tokens.toLocaleString()} tokens</span>
               <span>·</span>
+              <span>{includedCount}/{handoffOptions.length} context</span>
+              <span>·</span>
               <span>cwd: <code>{workspace.rootPath}</code></span>
             </div>
           }
         />
+
+        <InspectorSection label="Suggested context">
+          <Card>
+            {handoffOptions.map((option) => {
+              const included = selectedContext.has(option.id);
+              const ToggleIcon = included ? CheckSquare : Square;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  aria-pressed={included}
+                  onClick={() => onToggleHandoffContext(option.id)}
+                  className={cx(
+                    "w-full min-w-0 grid grid-cols-[18px_minmax(0,1fr)] gap-2 px-2.5 py-2 text-left border-b border-line-soft last:border-b-0 hover:bg-surface-3",
+                    included ? "text-ink-soft" : "text-ink-mute",
+                  )}
+                >
+                  <span className="pt-0.5 text-accent">
+                    <ToggleIcon size={13} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="flex items-center gap-1.5 min-w-0">
+                      <span className="font-mono text-[9.5px] uppercase tracking-[0.07em] text-ink-mute shrink-0">
+                        {option.kind}
+                      </span>
+                      <span className="text-[12px] leading-[1.25] truncate text-ink-soft" title={option.label}>
+                        {option.label}
+                      </span>
+                    </span>
+                    <span className="block mt-0.5 font-mono text-[10.5px] leading-[1.35] text-ink-mute truncate" title={option.detail}>
+                      {option.detail}
+                    </span>
+                    <span className="block mt-1 text-[11.5px] leading-[1.35] text-ink-faint">
+                      {option.reason}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </Card>
+        </InspectorSection>
 
         <InspectorSection label={<></>}>
           <div className="border border-line rounded-[5px] bg-surface-input-2 overflow-hidden">

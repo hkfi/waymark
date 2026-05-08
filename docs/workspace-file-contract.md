@@ -231,6 +231,8 @@ Generated handoff prompts are Markdown artifacts. A prompt becomes canonical onl
 
 Prompt filenames start as `ai/prompts/YYYY-MM-DD-<ticket-id>.md`. If that file already exists, Waymark appends a numeric suffix such as `-2` or `-3` so generating another prompt never overwrites an earlier one.
 
+Prompt content is assembled from the handoff picker. Suggested context can include project standards, repos, linked files, linked decisions, linked thread references, and handoff-eligible `links.yaml` records; only the rows selected by the user should appear in the saved Markdown.
+
 ```markdown
 # Task: Refine workspace file contract
 

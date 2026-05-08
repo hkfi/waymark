@@ -107,11 +107,14 @@ Generated handoffs should include:
 - task title and goal
 - project summary and current focus
 - acceptance criteria
+- selected project standards such as `AGENTS.md`, `.agent/rules/`, and relevant docs
 - selected repo and file context
 - selected decisions and AI thread references
 - handoff-eligible Context records from `links.yaml`
 - scoped implementation instructions
 - expected verification and completion summary
+
+The handoff prompt inspector should make suggested context explainable before save/copy. Suggested rows should name why they appeared: project standards, project repo reference, linked file, linked decision, linked thread, or handoff-eligible Context record. The user can include or exclude suggested rows before saving or copying the generated Markdown, and the saved prompt should reflect only the selected context.
 
 Generated handoffs should not:
 
@@ -126,7 +129,6 @@ Generated handoffs should not:
 
 Good next steps:
 
-- richer context picker
 - import pasted AI thread summaries
 - stale context warnings
 - read-only MCP server for project state

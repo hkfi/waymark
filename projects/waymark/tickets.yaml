@@ -53,19 +53,26 @@ tickets:
     generated_prompts: []
   - id: improve-handoff-context-picker
     title: Improve handoff context picker
-    status: next
+    status: done
     priority: medium
-    summary: Make the handoff panel better at suggesting linked files, decisions, thread summaries, and project standards.
+    summary: Make the handoff panel explain suggested files, decisions, thread summaries, Context records, and project standards before saving or copying a prompt.
     acceptance_criteria:
       - Handoff preview can include project standards.
       - User can see why each context item was suggested.
+      - User can include or exclude suggested context before saving or copying the prompt.
+      - Handoff-eligible Context records are suggested from links.yaml.
+      - Service, domain, dashboard, and admin links stay excluded unless explicitly handoff-enabled.
       - Generated prompt remains readable Markdown.
     linked_files:
-      - src/App.tsx
       - src/workspace.ts
+      - src/app/AppShell.tsx
+      - src/app/hooks/useProjectActions.ts
+      - src/components/inspector.tsx
       - docs/ai-workflows.md
+      - docs/workspace-file-contract.md
     linked_decisions: []
-    linked_threads: []
+    linked_threads:
+      - handoff-context-picker-2026-05-08
     generated_prompts: []
   - id: codex-backed-assistant
     title: Codex-backed Waymark Assistant

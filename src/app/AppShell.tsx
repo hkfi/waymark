@@ -353,6 +353,9 @@ function InspectorRegion() {
       multi={selection.multi}
       workspace={workspace.data}
       onSendHandoff={actions.sendHandoff}
+      handoffOptions={actions.handoffOptions}
+      selectedHandoffContextIds={actions.selectedHandoffContextIds}
+      onToggleHandoffContext={actions.toggleHandoffContext}
       onStatus={actions.changeStatus}
       onEditTicket={selection.editTicket}
       onToggleContextHandoff={(link, included) =>

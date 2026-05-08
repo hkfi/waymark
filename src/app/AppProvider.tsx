@@ -80,6 +80,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     project: workspaceState.selectedProject,
     selectedTicket: selection.selectedTicket,
     multi: selection.multi,
+    inspectorMode: selection.inspectorMode,
     setInspectorMode: selection.setInspectorMode,
     refresh: workspaceState.refresh,
     clearEditingTicket: selection.clearEditingTicket,

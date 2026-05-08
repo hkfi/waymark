@@ -1,8 +1,9 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { isTauri } from "../../tauri";
 import type { LinkRecord, RepoRef, ThreadRecord, Ticket, TicketStatus, WaymarkProject } from "../../types";
 import {
   addReposToProject,
+  buildHandoffContextOptions,
   buildPrompt,
   createNote,
   saveGeneratedPrompts,
@@ -17,6 +18,7 @@ type ProjectActionDeps = {
   project: WaymarkProject | null;
   selectedTicket: Ticket | null;
   multi: string[];
+  inspectorMode: InspectorMode;
   setInspectorMode: (mode: InspectorMode) => void;
   refresh: () => Promise<void>;
   clearEditingTicket: () => void;
@@ -31,6 +33,7 @@ export function useProjectActions({
   project,
   selectedTicket,
   multi,
+  inspectorMode,
   setInspectorMode,
   refresh,
   clearEditingTicket,
@@ -40,18 +43,61 @@ export function useProjectActions({
   setError,
   setNotice,
 }: ProjectActionDeps) {
+  const handoffTickets = useMemo(() => {
+    if (!project) return [];
+    const ids = multi.length ? multi : selectedTicket ? [selectedTicket.id] : [];
+    return project.tickets.filter((ticket) => ids.includes(ticket.id));
+  }, [multi, project, selectedTicket]);
+
+  const handoffTicketKey = useMemo(
+    () => handoffTickets.map((ticket) => ticket.id).sort().join("|"),
+    [handoffTickets],
+  );
+  const [handoffContextOverrides, setHandoffContextOverrides] = useState<Record<string, boolean>>({});
+  const handoffOptions = useMemo(
+    () => (project ? buildHandoffContextOptions(project, handoffTickets) : []),
+    [handoffTickets, project],
+  );
+
+  useEffect(() => {
+    setHandoffContextOverrides({});
+  }, [handoffTicketKey, project?.rootPath]);
+
+  const selectedHandoffContextIds = useMemo(
+    () =>
+      handoffOptions
+        .filter((option) => handoffContextOverrides[option.id] ?? option.defaultIncluded)
+        .map((option) => option.id),
+    [handoffContextOverrides, handoffOptions],
+  );
+
+  const toggleHandoffContext = useCallback(
+    (id: string) => {
+      const option = handoffOptions.find((candidate) => candidate.id === id);
+      if (!option) return;
+      setHandoffContextOverrides((current) => ({
+        ...current,
+        [id]: !(current[id] ?? option.defaultIncluded),
+      }));
+    },
+    [handoffOptions],
+  );
+
   const sendHandoff = useCallback(async () => {
     if (!project) return;
-    const ids = multi.length ? multi : selectedTicket ? [selectedTicket.id] : [];
-    const tickets = project.tickets.filter((ticket) => ids.includes(ticket.id));
-    if (tickets.length === 0) {
+    if (handoffTickets.length === 0) {
       setError("Select a ticket to send to an agent.");
       return;
     }
 
     setInspectorMode("prompt");
-    const promptForCopy = tickets
-      .map((ticket) => buildPrompt(project, ticket, ["repos", "files", "decisions", "threads", "links"]))
+    if (inspectorMode !== "prompt") {
+      setNotice("Review suggested context, then save or copy the handoff prompt.");
+      return;
+    }
+
+    const promptForCopy = handoffTickets
+      .map((ticket) => buildPrompt(project, ticket, selectedHandoffContextIds))
       .join("\n\n---\n\n");
 
     if (!isTauri()) {
@@ -65,9 +111,9 @@ export function useProjectActions({
     }
 
     try {
-      const prompts = tickets.map((ticket) => ({
+      const prompts = handoffTickets.map((ticket) => ({
         ticket,
-        prompt: buildPrompt(project, ticket, ["repos", "files", "decisions", "threads", "links"]),
+        prompt: buildPrompt(project, ticket, selectedHandoffContextIds),
       }));
       const saved = await saveGeneratedPrompts(project, prompts);
       try {
@@ -80,7 +126,7 @@ export function useProjectActions({
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
-  }, [multi, project, refresh, selectedTicket, setError, setInspectorMode, setNotice]);
+  }, [handoffTickets, inspectorMode, project, refresh, selectedHandoffContextIds, setError, setInspectorMode, setNotice]);
 
   const changeStatus = useCallback(
     async (ticket: Ticket, status: TicketStatus) => {
@@ -311,7 +357,23 @@ export function useProjectActions({
       updateLink,
       deleteLink,
       onboardRepo,
+      handoffOptions,
+      selectedHandoffContextIds,
+      toggleHandoffContext,
     }),
-    [addFile, addLink, capture, changeStatus, deleteLink, onboardRepo, saveTicket, sendHandoff, updateLink],
+    [
+      addFile,
+      addLink,
+      capture,
+      changeStatus,
+      deleteLink,
+      handoffOptions,
+      onboardRepo,
+      saveTicket,
+      selectedHandoffContextIds,
+      sendHandoff,
+      toggleHandoffContext,
+      updateLink,
+    ],
   );
 }

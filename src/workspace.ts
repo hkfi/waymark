@@ -100,6 +100,17 @@ export type RepoInstructionDraft = {
   contents: string;
 };
 
+export type HandoffContextKind = "standards" | "repo" | "file" | "decision" | "thread" | "link";
+
+export type HandoffContextOption = {
+  id: string;
+  kind: HandoffContextKind;
+  label: string;
+  detail: string;
+  reason: string;
+  defaultIncluded: boolean;
+};
+
 const PROJECT_SCAFFOLD_ITEMS: ProjectScaffoldItem[] = [
   { label: "tickets.yaml", path: "tickets.yaml", kind: "file" },
   { label: "links.yaml", path: "links.yaml", kind: "file" },
@@ -108,6 +119,19 @@ const PROJECT_SCAFFOLD_ITEMS: ProjectScaffoldItem[] = [
   { label: "decisions/", path: "decisions", kind: "directory" },
   { label: "ai/prompts/", path: "ai/prompts", kind: "directory" },
   { label: "ai/thread-summaries/", path: "ai/thread-summaries", kind: "directory" },
+];
+
+const PROJECT_STANDARDS_CONTEXT_PATHS = [
+  "AGENTS.md",
+  "ARCHITECTURE.md",
+  "docs/development-standards.md",
+  "docs/ai-workflows.md",
+  "docs/mvp-boundaries.md",
+  "docs/mvp-exit-criteria.md",
+  "docs/roadmap.md",
+  "docs/release-policy.md",
+  ".agent/rules/",
+  ".agent/workflows/feature-handoff.md",
 ];
 
 function isoDate(value: unknown): string | undefined {
@@ -853,6 +877,134 @@ export function shouldIncludeContextInHandoff(link: LinkRecord) {
   return ["repo", "file", "doc", "deploy", "design"].includes(link.type);
 }
 
+function addTicketReason(map: Map<string, Set<string>>, key: string, ticketId: string) {
+  const ticketIds = map.get(key) ?? new Set<string>();
+  ticketIds.add(ticketId);
+  map.set(key, ticketIds);
+}
+
+function ticketReason(ticketIds: Set<string>) {
+  return Array.from(ticketIds).sort().join(", ");
+}
+
+function linkValue(link: LinkRecord) {
+  return link.url ?? link.path ?? link.type;
+}
+
+export function buildHandoffContextOptions(
+  project: WaymarkProject,
+  tickets: Ticket[],
+): HandoffContextOption[] {
+  if (tickets.length === 0) return [];
+
+  const selectedTicketIds = new Set(tickets.map((ticket) => ticket.id));
+  const options: HandoffContextOption[] = [
+    {
+      id: "standards",
+      kind: "standards",
+      label: "Project standards",
+      detail: PROJECT_STANDARDS_CONTEXT_PATHS.join(", "),
+      reason: "Canonical project standards from AGENTS.md, docs, and .agent rules.",
+      defaultIncluded: true,
+    },
+  ];
+
+  for (const repo of project.config.repos ?? []) {
+    const detail = [repo.path ? `Local: ${repo.path}` : "", repo.url ? `URL: ${repo.url}` : ""]
+      .filter(Boolean)
+      .join(" · ");
+    options.push({
+      id: `repo:${repo.id}`,
+      kind: "repo",
+      label: repo.name,
+      detail: detail || repo.id,
+      reason: "Project repo reference from project.yaml.",
+      defaultIncluded: true,
+    });
+  }
+
+  const fileTickets = new Map<string, Set<string>>();
+  const decisionTickets = new Map<string, Set<string>>();
+  const threadTickets = new Map<string, Set<string>>();
+
+  for (const ticket of tickets) {
+    for (const file of ticket.linked_files ?? []) {
+      addTicketReason(fileTickets, file, ticket.id);
+    }
+    for (const decisionId of ticket.linked_decisions ?? []) {
+      addTicketReason(decisionTickets, decisionId, ticket.id);
+    }
+    for (const threadId of ticket.linked_threads ?? []) {
+      addTicketReason(threadTickets, threadId, ticket.id);
+    }
+  }
+
+  for (const decision of project.decisions) {
+    for (const ticketId of decision.linked_tickets) {
+      if (selectedTicketIds.has(ticketId)) addTicketReason(decisionTickets, decision.id, ticketId);
+    }
+  }
+
+  for (const thread of project.threads) {
+    for (const ticketId of thread.linked_tickets ?? []) {
+      if (selectedTicketIds.has(ticketId)) addTicketReason(threadTickets, thread.id, ticketId);
+    }
+  }
+
+  for (const [file, ticketIds] of fileTickets) {
+    options.push({
+      id: `file:${file}`,
+      kind: "file",
+      label: file,
+      detail: "tickets.yaml linked_files",
+      reason: `Linked file on selected ticket: ${ticketReason(ticketIds)}.`,
+      defaultIncluded: true,
+    });
+  }
+
+  for (const decision of project.decisions) {
+    const ticketIds = decisionTickets.get(decision.id);
+    if (!ticketIds) continue;
+    options.push({
+      id: `decision:${decision.id}`,
+      kind: "decision",
+      label: decision.title,
+      detail: decision.path,
+      reason: `Linked decision for selected ticket: ${ticketReason(ticketIds)}.`,
+      defaultIncluded: true,
+    });
+  }
+
+  for (const thread of project.threads) {
+    const ticketIds = threadTickets.get(thread.id);
+    if (!ticketIds) continue;
+    options.push({
+      id: `thread:${thread.id}`,
+      kind: "thread",
+      label: thread.title,
+      detail: thread.summary_file ?? thread.url ?? thread.id,
+      reason: `Linked AI thread reference for selected ticket: ${ticketReason(ticketIds)}.`,
+      defaultIncluded: true,
+    });
+  }
+
+  for (const link of project.links.filter(shouldIncludeContextInHandoff)) {
+    const explicit = link.include_in_handoff === true;
+    options.push({
+      id: `link:${link.id}`,
+      kind: "link",
+      label: link.label,
+      detail: linkValue(link),
+      reason: explicit
+        ? "Explicitly handoff-enabled Context record from links.yaml."
+        : "Handoff-eligible Context record from links.yaml.",
+      defaultIncluded: true,
+    });
+  }
+
+  return options;
+}
+
 export async function createNote(
   project: WaymarkProject,
   type: "idea" | "decision",
@@ -930,16 +1082,31 @@ export async function saveGeneratedPrompts(
 }
 
 export function buildPrompt(project: WaymarkProject, ticket: Ticket, selectedContext: string[]) {
-  const linkedDecisions = project.decisions.filter((decision) => ticket.linked_decisions?.includes(decision.id));
-  const linkedThreads = project.threads.filter((thread) => ticket.linked_threads?.includes(thread.id));
+  const selected = new Set(selectedContext);
+  const include = (bucketId: string, optionId: string) => selected.has(bucketId) || selected.has(optionId);
+  const includeBucket = (bucketId: string) => selected.has(bucketId);
+
+  const linkedDecisions = project.decisions.filter(
+    (decision) =>
+      ticket.linked_decisions?.includes(decision.id) ||
+      decision.linked_tickets.includes(ticket.id),
+  );
+  const linkedThreads = project.threads.filter(
+    (thread) =>
+      ticket.linked_threads?.includes(thread.id) ||
+      thread.linked_tickets?.includes(ticket.id),
+  );
   const repos = project.config.repos ?? [];
-  const links = project.links
-    .filter(shouldIncludeContextInHandoff)
+  const selectedRepos = repos.filter((repo) => include("repos", `repo:${repo.id}`));
+  const selectedFiles = (ticket.linked_files ?? []).filter((file) => include("files", `file:${file}`));
+  const selectedDecisions = linkedDecisions.filter((decision) => include("decisions", `decision:${decision.id}`));
+  const selectedThreads = linkedThreads.filter((thread) => include("threads", `thread:${thread.id}`));
+  const selectedLinks = project.links
+    .filter((link) => shouldIncludeContextInHandoff(link) && include("links", `link:${link.id}`))
     .map((link) => `${link.label} (${link.type})${link.url ? `: ${link.url}` : ""}${link.path ? `: ${link.path}` : ""}`);
 
-  const include = (key: string) => selectedContext.includes(key);
-
-  return `# Task: ${ticket.title}
+  const sections = [
+    `# Task: ${ticket.title}
 
 ## Goal
 
@@ -955,22 +1122,57 @@ Current focus: ${project.config.current_focus || "Not set"}
 
 ## Acceptance Criteria
 
-${ticket.acceptance_criteria?.length ? ticket.acceptance_criteria.map((item) => `- ${item}`).join("\n") : "- Add acceptance criteria before implementation if this is too vague."}
+${ticket.acceptance_criteria?.length ? ticket.acceptance_criteria.map((item) => `- ${item}`).join("\n") : "- Add acceptance criteria before implementation if this is too vague."}`,
+  ];
 
-${include("repos") ? `## Repositories\n\n${repos.length ? repos.map((repo) => `- ${repo.name} (${repo.id})${repo.path ? `\n  - Local: ${repo.path}` : ""}${repo.url ? `\n  - URL: ${repo.url}` : ""}`).join("\n") : "- No linked repos."}\n` : ""}
-${include("files") ? `## Relevant Files\n\n${ticket.linked_files?.length ? ticket.linked_files.map((file) => `- ${file}`).join("\n") : "- No linked files were provided."}\n` : ""}
-${include("decisions") ? `## Linked Decisions\n\n${linkedDecisions.length ? linkedDecisions.map((decision) => `### ${decision.title}\n\n${decision.body}`).join("\n\n") : "- No linked decisions."}\n` : ""}
-${include("threads") ? `## AI Thread References\n\n${linkedThreads.length ? linkedThreads.map((thread) => `- ${thread.title} (${thread.provider}, ${thread.status})${thread.url ? `: ${thread.url}` : ""}${thread.summary_file ? `\n  - Summary: ${thread.summary_file}` : ""}`).join("\n") : "- No linked thread references."}\n` : ""}
-${include("links") ? `## Project Context\n\n${links.length ? links.map((link) => `- ${link}`).join("\n") : "- No important project context."}\n` : ""}
-## Instructions
+  if (selected.has("standards")) {
+    sections.push(`## Project Standards
+
+Review these standards before implementation when they exist in the target repo or workspace:
+
+${PROJECT_STANDARDS_CONTEXT_PATHS.map((path) => `- ${path}`).join("\n")}`);
+  }
+
+  if (includeBucket("repos") || selectedRepos.length > 0) {
+    sections.push(`## Repositories
+
+${selectedRepos.length ? selectedRepos.map((repo) => `- ${repo.name} (${repo.id})${repo.path ? `\n  - Local: ${repo.path}` : ""}${repo.url ? `\n  - URL: ${repo.url}` : ""}`).join("\n") : "- No linked repos."}`);
+  }
+
+  if (includeBucket("files") || selectedFiles.length > 0) {
+    sections.push(`## Relevant Files
+
+${selectedFiles.length ? selectedFiles.map((file) => `- ${file}`).join("\n") : "- No linked files were provided."}`);
+  }
+
+  if (includeBucket("decisions") || selectedDecisions.length > 0) {
+    sections.push(`## Linked Decisions
+
+${selectedDecisions.length ? selectedDecisions.map((decision) => `### ${decision.title}\n\n${decision.body}`).join("\n\n") : "- No linked decisions."}`);
+  }
+
+  if (includeBucket("threads") || selectedThreads.length > 0) {
+    sections.push(`## AI Thread References
+
+${selectedThreads.length ? selectedThreads.map((thread) => `- ${thread.title} (${thread.provider}, ${thread.status})${thread.url ? `: ${thread.url}` : ""}${thread.summary_file ? `\n  - Summary: ${thread.summary_file}` : ""}`).join("\n") : "- No linked thread references."}`);
+  }
+
+  if (includeBucket("links") || selectedLinks.length > 0) {
+    sections.push(`## Project Context
+
+${selectedLinks.length ? selectedLinks.map((link) => `- ${link}`).join("\n") : "- No important project context."}`);
+  }
+
+  sections.push(`## Instructions
 
 - Make the smallest reasonable change.
 - Follow the existing project conventions.
 - Ask before broad refactors.
 - Add or update tests when appropriate.
 - Update relevant Waymark notes, tickets, or decisions if behavior changes.
-- When done, summarize changed files, verification, and any follow-up tasks.
-`;
+- When done, summarize changed files, verification, and any follow-up tasks.`);
+
+  return `${sections.join("\n\n")}\n`;
 }
 
 /**
