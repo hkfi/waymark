@@ -269,6 +269,8 @@ Waymark delete actions are explicit project-memory writes. They should confirm w
 - Deleting an idea or decision removes the Markdown file from `ideas/` or `decisions/`; deleting a decision also unlinks its id from tickets.
 - Removing a generated prompt reference updates `tickets.yaml.generated_prompts`; the prompt Markdown file remains in `ai/prompts/`.
 
+Undoable deletes restore exact project-memory file snapshots when the affected files still match the recorded post-delete state. If a file changed externally after the delete, Waymark blocks the undo instead of merging or force-applying stale snapshots.
+
 ## Validation Behavior
 
 Waymark should prefer specific warnings over silent drops:

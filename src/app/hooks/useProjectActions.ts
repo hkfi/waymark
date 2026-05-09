@@ -6,15 +6,19 @@ import {
   addReposToProject,
   buildHandoffContextOptions,
   buildPrompt,
-  createNote,
-  saveGeneratedPrompts,
+  planGeneratedPrompts,
+  planNoteFile,
+  projectMemoryPath,
+  saveGeneratedPromptPlan,
   saveLinks,
   saveProjectConfig,
   saveThreads,
   saveTickets,
+  writePlannedProjectFile,
 } from "../../workspace";
 import type { RepoInstructionDraft } from "../../workspace";
 import { LANE_LABEL, lines, recordId, type CapturePayload, type InspectorMode, type Lane } from "../model";
+import type { RecordTransaction } from "./useUndoRedoState";
 
 type ProjectActionDeps = {
   project: WaymarkProject | null;
@@ -27,6 +31,7 @@ type ProjectActionDeps = {
   closeCapture: () => void;
   closeFileModal: () => void;
   closeRepoOnboarding: () => void;
+  recordTransaction: RecordTransaction;
   setError: (value: string | null) => void;
   setNotice: (value: string | null) => void;
 };
@@ -42,6 +47,7 @@ export function useProjectActions({
   closeCapture,
   closeFileModal,
   closeRepoOnboarding,
+  recordTransaction,
   setError,
   setNotice,
 }: ProjectActionDeps) {
@@ -117,18 +123,23 @@ export function useProjectActions({
         ticket,
         prompt: buildPrompt(project, ticket, selectedHandoffContextIds),
       }));
-      const saved = await saveGeneratedPrompts(project, prompts);
+      const plans = await planGeneratedPrompts(project, prompts);
+      await recordTransaction(
+        `Save ${plans.length} handoff prompt${plans.length === 1 ? "" : "s"}`,
+        [projectMemoryPath(project, "tickets.yaml"), ...plans.map((plan) => plan.path)],
+        () => saveGeneratedPromptPlan(project, plans),
+        (result) => `Saved ${result.length} prompt${result.length === 1 ? "" : "s"} and copied to clipboard.`,
+      );
       try {
         await navigator.clipboard.writeText(promptForCopy);
       } catch {
         /* clipboard not always available */
       }
-      setNotice(`Saved ${saved.length} prompt${saved.length === 1 ? "" : "s"} and copied to clipboard.`);
       await refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
-  }, [handoffTickets, inspectorMode, project, refresh, selectedHandoffContextIds, setError, setInspectorMode, setNotice]);
+  }, [handoffTickets, inspectorMode, project, recordTransaction, refresh, selectedHandoffContextIds, setError, setInspectorMode, setNotice]);
 
   const changeStatus = useCallback(
     async (ticket: Ticket, status: TicketStatus) => {
@@ -139,19 +150,24 @@ export function useProjectActions({
       }
 
       try {
-        await saveTickets(
-          project,
-          project.tickets.map((candidate) =>
-            candidate.id === ticket.id ? { ...candidate, status } : candidate,
-          ),
+        await recordTransaction(
+          `Move ${ticket.title} to ${LANE_LABEL[status as Lane] ?? status}`,
+          [projectMemoryPath(project, "tickets.yaml")],
+          () =>
+            saveTickets(
+              project,
+              project.tickets.map((candidate) =>
+                candidate.id === ticket.id ? { ...candidate, status } : candidate,
+              ),
+            ),
+          `Moved ${ticket.title} to ${LANE_LABEL[status as Lane] ?? status}.`,
         );
-        setNotice(`Moved ${ticket.title} to ${LANE_LABEL[status as Lane] ?? status}.`);
         await refresh();
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
     },
-    [project, refresh, setError, setNotice],
+    [project, recordTransaction, refresh, setError, setNotice],
   );
 
   const saveTicket = useCallback(
@@ -163,18 +179,23 @@ export function useProjectActions({
       }
 
       try {
-        await saveTickets(
-          project,
-          project.tickets.map((candidate) => (candidate.id === ticket.id ? ticket : candidate)),
+        await recordTransaction(
+          `Update ${ticket.title}`,
+          [projectMemoryPath(project, "tickets.yaml")],
+          () =>
+            saveTickets(
+              project,
+              project.tickets.map((candidate) => (candidate.id === ticket.id ? ticket : candidate)),
+            ),
+          `Updated ${ticket.title}.`,
         );
-        setNotice(`Updated ${ticket.title}.`);
         clearEditingTicket();
         await refresh();
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
     },
-    [clearEditingTicket, project, refresh, setError, setNotice],
+    [clearEditingTicket, project, recordTransaction, refresh, setError, setNotice],
   );
 
   const deleteTicket = useCallback(
@@ -186,15 +207,19 @@ export function useProjectActions({
       }
 
       try {
-        await saveTickets(project, project.tickets.filter((candidate) => candidate.id !== ticket.id));
-        setNotice(`Deleted ${ticket.title}.`);
+        await recordTransaction(
+          `Delete ${ticket.title}`,
+          [projectMemoryPath(project, "tickets.yaml")],
+          () => saveTickets(project, project.tickets.filter((candidate) => candidate.id !== ticket.id)),
+          `Deleted ${ticket.title}.`,
+        );
         clearEditingTicket();
         await refresh();
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
     },
-    [clearEditingTicket, project, refresh, setError, setNotice],
+    [clearEditingTicket, project, recordTransaction, refresh, setError, setNotice],
   );
 
   const deletePromptReference = useCallback(
@@ -206,24 +231,29 @@ export function useProjectActions({
       }
 
       try {
-        await saveTickets(
-          project,
-          project.tickets.map((candidate) =>
-            candidate.id === ticket.id
-              ? {
-                  ...candidate,
-                  generated_prompts: (candidate.generated_prompts ?? []).filter((path) => path !== promptPath),
-                }
-              : candidate,
-          ),
+        await recordTransaction(
+          `Remove prompt reference from ${ticket.title}`,
+          [projectMemoryPath(project, "tickets.yaml")],
+          () =>
+            saveTickets(
+              project,
+              project.tickets.map((candidate) =>
+                candidate.id === ticket.id
+                  ? {
+                      ...candidate,
+                      generated_prompts: (candidate.generated_prompts ?? []).filter((path) => path !== promptPath),
+                    }
+                  : candidate,
+              ),
+            ),
+          `Removed prompt reference from ${ticket.title}. Prompt file was not deleted.`,
         );
-        setNotice(`Removed prompt reference from ${ticket.title}. Prompt file was not deleted.`);
         await refresh();
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
     },
-    [project, refresh, setError, setNotice],
+    [project, recordTransaction, refresh, setError, setNotice],
   );
 
   const capture = useCallback(
@@ -248,14 +278,25 @@ export function useProjectActions({
             linked_threads: lines(payload.linkedThreads),
             generated_prompts: [],
           };
-          await saveTickets(project, [...project.tickets, ticket]);
+          await recordTransaction(
+            `Capture ${payload.title}`,
+            [projectMemoryPath(project, "tickets.yaml")],
+            () => saveTickets(project, [...project.tickets, ticket]),
+            `Captured ${payload.title}.`,
+          );
         } else if (payload.kind === "idea" || payload.kind === "decision") {
-          await createNote(
+          const notePlan = await planNoteFile(
             project,
             payload.kind,
             payload.title,
             payload.summary || payload.body || "Captured from Waymark.",
             lines(payload.linkedTickets),
+          );
+          await recordTransaction(
+            `Capture ${payload.title}`,
+            [notePlan.path],
+            () => writePlannedProjectFile(notePlan),
+            `Captured ${payload.title}.`,
           );
         } else if (payload.kind === "thread") {
           const thread: ThreadRecord = {
@@ -267,17 +308,21 @@ export function useProjectActions({
             summary_file: payload.summaryFile.trim() || undefined,
             linked_tickets: lines(payload.linkedTickets),
           };
-          await saveThreads(project, [...project.threads, thread]);
+          await recordTransaction(
+            `Capture ${payload.title}`,
+            [projectMemoryPath(project, "threads.yaml")],
+            () => saveThreads(project, [...project.threads, thread]),
+            `Captured ${payload.title}.`,
+          );
         }
 
-        setNotice(`Captured ${payload.title}.`);
         closeCapture();
         await refresh();
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
     },
-    [closeCapture, project, refresh, setError, setNotice],
+    [closeCapture, project, recordTransaction, refresh, setError, setNotice],
   );
 
   const addFile = useCallback(
@@ -291,22 +336,27 @@ export function useProjectActions({
       if (!cleanPath) return;
 
       try {
-        await saveTickets(
-          project,
-          project.tickets.map((ticket) =>
-            ticket.id === ticketId
-              ? { ...ticket, linked_files: Array.from(new Set([...(ticket.linked_files ?? []), cleanPath])) }
-              : ticket,
-          ),
+        await recordTransaction(
+          `Link ${cleanPath}`,
+          [projectMemoryPath(project, "tickets.yaml")],
+          () =>
+            saveTickets(
+              project,
+              project.tickets.map((ticket) =>
+                ticket.id === ticketId
+                  ? { ...ticket, linked_files: Array.from(new Set([...(ticket.linked_files ?? []), cleanPath])) }
+                  : ticket,
+              ),
+            ),
+          `Linked ${cleanPath}.`,
         );
-        setNotice(`Linked ${cleanPath}.`);
         closeFileModal();
         await refresh();
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
     },
-    [closeFileModal, project, refresh, setError, setNotice],
+    [closeFileModal, project, recordTransaction, refresh, setError, setNotice],
   );
 
   const addLink = useCallback(
@@ -318,15 +368,19 @@ export function useProjectActions({
       }
 
       try {
-        await saveLinks(project, [...project.links.filter((item) => item.id !== link.id), link]);
-        setNotice(`Added ${link.label}.`);
+        await recordTransaction(
+          `Add ${link.label}`,
+          [projectMemoryPath(project, "links.yaml")],
+          () => saveLinks(project, [...project.links.filter((item) => item.id !== link.id), link]),
+          `Added ${link.label}.`,
+        );
         closeFileModal();
         await refresh();
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
     },
-    [closeFileModal, project, refresh, setError, setNotice],
+    [closeFileModal, project, recordTransaction, refresh, setError, setNotice],
   );
 
   const updateLink = useCallback(
@@ -338,17 +392,22 @@ export function useProjectActions({
       }
 
       try {
-        await saveLinks(
-          project,
-          project.links.map((item) => (item.id === link.id ? link : item)),
+        await recordTransaction(
+          `Update ${link.label}`,
+          [projectMemoryPath(project, "links.yaml")],
+          () =>
+            saveLinks(
+              project,
+              project.links.map((item) => (item.id === link.id ? link : item)),
+            ),
+          `Updated ${link.label}.`,
         );
-        setNotice(`Updated ${link.label}.`);
         await refresh();
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
     },
-    [project, refresh, setError, setNotice],
+    [project, recordTransaction, refresh, setError, setNotice],
   );
 
   const deleteContextRow = useCallback(
@@ -361,22 +420,35 @@ export function useProjectActions({
 
       try {
         if (row.source === "link" && row.link) {
-          await saveLinks(project, project.links.filter((item) => item.id !== row.link?.id));
-          setNotice(`Deleted context item ${row.label}.`);
+          await recordTransaction(
+            `Delete context item ${row.label}`,
+            [projectMemoryPath(project, "links.yaml")],
+            () => saveLinks(project, project.links.filter((item) => item.id !== row.link?.id)),
+            `Deleted context item ${row.label}.`,
+          );
         } else if (row.source === "project" && row.repo) {
           const repos = (project.config.repos ?? []).filter((repo) => repo.id !== row.repo?.id);
-          await saveProjectConfig(project, { ...project.config, repos });
-          setNotice(`Removed repo reference ${row.label}.`);
-        } else if (row.source === "ticket" && row.ticket) {
-          await saveTickets(
-            project,
-            project.tickets.map((ticket) =>
-              ticket.id === row.ticket?.id
-                ? { ...ticket, linked_files: (ticket.linked_files ?? []).filter((file) => file !== row.value) }
-                : ticket,
-            ),
+          await recordTransaction(
+            `Remove repo reference ${row.label}`,
+            [projectMemoryPath(project, "project.yaml")],
+            () => saveProjectConfig(project, { ...project.config, repos }),
+            `Removed repo reference ${row.label}.`,
           );
-          setNotice(`Unlinked ${row.value} from ${row.label}.`);
+        } else if (row.source === "ticket" && row.ticket) {
+          await recordTransaction(
+            `Unlink ${row.value}`,
+            [projectMemoryPath(project, "tickets.yaml")],
+            () =>
+              saveTickets(
+                project,
+                project.tickets.map((ticket) =>
+                  ticket.id === row.ticket?.id
+                    ? { ...ticket, linked_files: (ticket.linked_files ?? []).filter((file) => file !== row.value) }
+                    : ticket,
+                ),
+              ),
+            `Unlinked ${row.value} from ${row.label}.`,
+          );
         } else {
           setError("This context row cannot be removed from Waymark yet.");
           return;
@@ -386,7 +458,7 @@ export function useProjectActions({
         setError(caught instanceof Error ? caught.message : String(caught));
       }
     },
-    [project, refresh, setError, setNotice],
+    [project, recordTransaction, refresh, setError, setNotice],
   );
 
   const deleteThread = useCallback(
@@ -398,21 +470,27 @@ export function useProjectActions({
       }
 
       try {
-        await saveThreads(project, project.threads.filter((candidate) => candidate.id !== thread.id));
-        await saveTickets(
-          project,
-          project.tickets.map((ticket) => ({
-            ...ticket,
-            linked_threads: (ticket.linked_threads ?? []).filter((threadId) => threadId !== thread.id),
-          })),
+        await recordTransaction(
+          `Delete thread reference ${thread.title}`,
+          [projectMemoryPath(project, "threads.yaml"), projectMemoryPath(project, "tickets.yaml")],
+          async () => {
+            await saveThreads(project, project.threads.filter((candidate) => candidate.id !== thread.id));
+            await saveTickets(
+              project,
+              project.tickets.map((ticket) => ({
+                ...ticket,
+                linked_threads: (ticket.linked_threads ?? []).filter((threadId) => threadId !== thread.id),
+              })),
+            );
+          },
+          `Deleted thread reference ${thread.title}. Summary file was not deleted.`,
         );
-        setNotice(`Deleted thread reference ${thread.title}. Summary file was not deleted.`);
         await refresh();
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
     },
-    [project, refresh, setError, setNotice],
+    [project, recordTransaction, refresh, setError, setNotice],
   );
 
   const deleteNote = useCallback(
@@ -424,23 +502,32 @@ export function useProjectActions({
       }
 
       try {
-        await removeFile(note.path);
-        if (note.type === "decision") {
-          await saveTickets(
-            project,
-            project.tickets.map((ticket) => ({
-              ...ticket,
-              linked_decisions: (ticket.linked_decisions ?? []).filter((decisionId) => decisionId !== note.id),
-            })),
-          );
-        }
-        setNotice(`Deleted ${note.type} ${note.title}.`);
+        const paths = note.type === "decision"
+          ? [note.path, projectMemoryPath(project, "tickets.yaml")]
+          : [note.path];
+        await recordTransaction(
+          `Delete ${note.type} ${note.title}`,
+          paths,
+          async () => {
+            await removeFile(note.path);
+            if (note.type === "decision") {
+              await saveTickets(
+                project,
+                project.tickets.map((ticket) => ({
+                  ...ticket,
+                  linked_decisions: (ticket.linked_decisions ?? []).filter((decisionId) => decisionId !== note.id),
+                })),
+              );
+            }
+          },
+          `Deleted ${note.type} ${note.title}.`,
+        );
         await refresh();
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
     },
-    [project, refresh, setError, setNotice],
+    [project, recordTransaction, refresh, setError, setNotice],
   );
 
   const onboardRepo = useCallback(

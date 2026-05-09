@@ -8,6 +8,7 @@ import { useNavigationState } from "./hooks/useNavigationState";
 import { usePaneLayout } from "./hooks/usePaneLayout";
 import { useProjectActions as useProjectActionsState } from "./hooks/useProjectActions";
 import { useSelectionState } from "./hooks/useSelectionState";
+import { useUndoRedoState } from "./hooks/useUndoRedoState";
 import { useWorkspaceState } from "./hooks/useWorkspaceState";
 
 type FeedbackContextValue = ReturnType<typeof useFeedbackState>;
@@ -17,6 +18,7 @@ type ModalContextValue = ReturnType<typeof useModalState>;
 type NavigationContextValue = ReturnType<typeof useNavigationState>;
 type ProjectActionsContextValue = ReturnType<typeof useProjectActionsState>;
 type SelectionContextValue = ReturnType<typeof useSelectionState>;
+type UndoRedoContextValue = ReturnType<typeof useUndoRedoState>;
 type WorkspaceContextValue = ReturnType<typeof useWorkspaceState>;
 
 const FeedbackContext = createContext<FeedbackContextValue | null>(null);
@@ -26,6 +28,7 @@ const ModalContext = createContext<ModalContextValue | null>(null);
 const NavigationContext = createContext<NavigationContextValue | null>(null);
 const ProjectActionsContext = createContext<ProjectActionsContextValue | null>(null);
 const SelectionContext = createContext<SelectionContextValue | null>(null);
+const UndoRedoContext = createContext<UndoRedoContextValue | null>(null);
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 
 function useRequiredContext<T>(context: Context<T | null>, name: string) {
@@ -64,6 +67,10 @@ export function useSelection() {
   return useRequiredContext(SelectionContext, "useSelection");
 }
 
+export function useUndoRedo() {
+  return useRequiredContext(UndoRedoContext, "useUndoRedo");
+}
+
 export function useWorkspace() {
   return useRequiredContext(WorkspaceContext, "useWorkspace");
 }
@@ -76,6 +83,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const navigation = useNavigationState();
   const workspaceState = useWorkspaceState(feedback);
   const selection = useSelectionState(workspaceState.selectedProject);
+  const undoRedo = useUndoRedoState({
+    scopeKey: workspaceState.selectedProject?.rootPath ?? null,
+    refresh: workspaceState.refresh,
+    setError: feedback.setError,
+    setNotice: feedback.setNotice,
+    setActionNotice: feedback.setActionNotice,
+  });
   const projectActions = useProjectActionsState({
     project: workspaceState.selectedProject,
     selectedTicket: selection.selectedTicket,
@@ -87,6 +101,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     closeCapture: modals.closeCapture,
     closeFileModal: modals.closeFileModal,
     closeRepoOnboarding: modals.closeRepoOnboarding,
+    recordTransaction: undoRedo.recordTransaction,
     setError: feedback.setError,
     setNotice: feedback.setNotice,
   });
@@ -123,6 +138,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     closeCreateProject: modals.closeCreateProject,
     closeFileModal: modals.closeFileModal,
     closeRepoOnboarding: modals.closeRepoOnboarding,
+    undo: undoRedo.undo,
+    redo: undoRedo.redo,
     setNotice: feedback.setNotice,
   });
 
@@ -149,9 +166,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
             <FilterContext.Provider value={filters}>
               <LayoutContext.Provider value={layout}>
                 <ModalContext.Provider value={modals}>
-                  <ProjectActionsContext.Provider value={projectActions}>
-                    {children}
-                  </ProjectActionsContext.Provider>
+                  <UndoRedoContext.Provider value={undoRedo}>
+                    <ProjectActionsContext.Provider value={projectActions}>
+                      {children}
+                    </ProjectActionsContext.Provider>
+                  </UndoRedoContext.Provider>
                 </ModalContext.Provider>
               </LayoutContext.Provider>
             </FilterContext.Provider>

@@ -206,6 +206,39 @@ tickets:
     linked_decisions: []
     linked_threads: []
     generated_prompts: []
+  - id: undo-redo-project-memory-writes
+    title: Undo/redo project-memory writes
+    status: done
+    priority: high
+    summary: Add session-scoped undo and redo for explicit Waymark project-memory writes using exact file snapshots and conflict checks.
+    acceptance_criteria:
+      - Ticket, Context, Memory, handoff prompt, and Assistant draft saves are recorded as named file transactions.
+      - Undo restores before snapshots and redo restores after snapshots.
+      - Undo and redo block when any affected file changed since the recorded action.
+      - Created Markdown prompt, note, and thread-summary files are removed again when undoing their transaction.
+      - Success toasts expose Undo or Redo actions, and keyboard shortcuts work outside text fields and modals.
+      - History is session-scoped and cleared when switching projects.
+      - Fake-filesystem and disposable workspace coverage verify undo/redo behavior; native smoke coverage is scripted for official tauri-driver platforms.
+      - Documentation records the undo/redo behavior and exclusions.
+    linked_files:
+      - ARCHITECTURE.md
+      - docs/development-standards.md
+      - docs/ai-workflows.md
+      - docs/keyboard-shortcuts.md
+      - docs/workspace-file-contract.md
+      - vitest.config.ts
+      - scripts/smoke-native-undo-redo.mjs
+      - src/app/history.ts
+      - src/app/history.test.ts
+      - src/app/AppProvider.tsx
+      - src/app/hooks/useUndoRedoState.ts
+      - src/app/hooks/useProjectActions.ts
+      - src/components/assistant.tsx
+      - src/workspace.ts
+      - src/workspace.undo-smoke.test.ts
+    linked_decisions: []
+    linked_threads: []
+    generated_prompts: []
   - id: guided-repo-onboarding
     title: Guided repo onboarding
     status: next

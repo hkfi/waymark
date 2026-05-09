@@ -122,6 +122,8 @@ All writes must be explicit user actions:
 - create a sample workspace
 - save generated prompts
 
+Project-memory writes made inside an open project are session-undoable when Waymark can snapshot the affected Markdown/YAML files. Undo and redo restore exact file contents, refuse to run if an affected file changed since the recorded action, and are cleared when the selected project changes. This history is UI state only; it is not canonical workspace data and is not persisted across reloads.
+
 Avoid background rewrites. If a future feature wants to clean up or migrate files, it should present a preview or run as an explicit migration.
 
 Sample workspace creation is a first-run user action. The app may suggest `~/Documents/Waymark Sample Workspace`, but it must not create or overwrite sample files until the user clicks the sample action.

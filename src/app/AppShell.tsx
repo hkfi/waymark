@@ -22,6 +22,7 @@ import {
   useNavigation,
   useProjectActions,
   useSelection,
+  useUndoRedo,
   useWorkspace,
 } from "./AppProvider";
 import { useAppUpdates } from "./hooks/useAppUpdates";
@@ -253,7 +254,11 @@ function FeedbackToasts() {
   return (
     <div className="toast-region" aria-live="polite" aria-atomic="true">
       {feedback.notice ? (
-        <Toast tone="ok" onClose={() => feedback.setNotice(null)}>
+        <Toast
+          tone="ok"
+          action={feedback.noticeAction ?? undefined}
+          onClose={() => feedback.setNotice(null)}
+        >
           {feedback.notice}
         </Toast>
       ) : null}
@@ -273,10 +278,12 @@ function FeedbackToasts() {
 
 function Toast({
   tone,
+  action,
   onClose,
   children,
 }: {
   tone: "ok" | "warn" | "err";
+  action?: { label: string; onClick: () => void };
   onClose?: () => void;
   children: ReactNode;
 }) {
@@ -291,6 +298,11 @@ function Toast({
     <div className={cx("toast", toneClass)} role={tone === "err" ? "alert" : "status"}>
       <Icon size={14} className="toast-icon" />
       <div className="toast-body">{children}</div>
+      {action ? (
+        <button type="button" className="toast-action" data-testid="toast-action" onClick={action.onClick}>
+          {action.label}
+        </button>
+      ) : null}
       {onClose ? (
         <button type="button" className="toast-close" onClick={onClose} aria-label="Dismiss notification">
           <X size={13} />
@@ -321,6 +333,7 @@ function InspectorRegion() {
   const actions = useProjectActions();
   const navigation = useNavigation();
   const selection = useSelection();
+  const undoRedo = useUndoRedo();
   const workspace = useWorkspace();
   const inspectorScope =
     navigation.nav === "context" ? "context" : navigation.nav === "memory" ? "memory" : "tickets";
@@ -373,6 +386,7 @@ function InspectorRegion() {
       assistantLaunchRequest={selection.assistantLaunchRequest}
       onAssistantLaunchConsumed={selection.clearAssistantLaunchRequest}
       onAskAssistant={selection.openAssistant}
+      recordTransaction={undoRedo.recordTransaction}
     />
   );
 }

@@ -35,6 +35,8 @@ type KeyboardShortcutDeps = {
   closeCreateProject: () => void;
   closeFileModal: () => void;
   closeRepoOnboarding: () => void;
+  undo: () => Promise<void>;
+  redo: () => Promise<void>;
   setNotice: (value: string | null) => void;
 };
 
@@ -73,6 +75,8 @@ export function useKeyboardShortcuts({
   closeCreateProject,
   closeFileModal,
   closeRepoOnboarding,
+  undo,
+  redo,
   setNotice,
 }: KeyboardShortcutDeps) {
   useEffect(() => {
@@ -165,6 +169,22 @@ export function useKeyboardShortcuts({
       }
 
       if (typing || modalOpen || event.altKey) return;
+
+      if (command && key === "z") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          void redo();
+        } else {
+          void undo();
+        }
+        return;
+      }
+
+      if (command && key === "y") {
+        event.preventDefault();
+        void redo();
+        return;
+      }
 
       if (command && /^[1-4]$/.test(key)) {
         event.preventDefault();
@@ -302,6 +322,8 @@ export function useKeyboardShortcuts({
     setNotice,
     setSearch,
     toggleMulti,
+    undo,
+    redo,
     resetZoom,
     zoomIn,
     zoomOut,

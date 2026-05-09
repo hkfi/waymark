@@ -51,6 +51,7 @@ The intended loop:
 5. Waymark validates draft IDs against the current project and turns invalid references into warnings.
 6. User reviews, edits, and selects proposed tickets, ideas, decisions, thread references, and summaries.
 7. Waymark writes only the accepted records to Markdown/YAML through its existing controlled write helpers.
+8. Accepted draft saves are recorded as one session undo transaction, so the user can reverse the reviewed write without undoing each generated file individually.
 
 ## Conversation To Structured Memory
 

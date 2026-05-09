@@ -8,6 +8,10 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:undo": "vitest run src/app/history.test.ts src/workspace.undo-smoke.test.ts",
+    "smoke:native:undo": "node scripts/smoke-native-undo-redo.mjs",
     "version:set": "node scripts/set-version.mjs"
   },
   "dependencies": {
@@ -27,8 +31,12 @@
     "@tailwindcss/vite": "^4.2.4",
     "@tauri-apps/cli": "2.10.1",
     "@types/js-yaml": "^4.0.9",
+    "@types/node": "^25.6.2",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
-    "tailwindcss": "^4.2.4"
+    "playwright": "^1.59.1",
+    "tailwindcss": "^4.2.4",
+    "vitest": "^4.1.5",
+    "webdriverio": "^9.27.1"
   }
 }

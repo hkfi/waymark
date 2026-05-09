@@ -207,6 +207,7 @@ export function DataRow({
   gap = 10,
   selected,
   ariaLabel,
+  testId,
   className,
   onClick,
   children,
@@ -218,12 +219,14 @@ export function DataRow({
   gap?: number;
   selected?: boolean;
   ariaLabel?: string;
+  testId?: string;
   className?: string;
   onClick?: () => void;
   children: ReactNode;
 }) {
   return (
     <div
+      data-testid={testId}
       onClick={onClick}
       onKeyDown={(event) => {
         if (!onClick || (event.key !== "Enter" && event.key !== " ")) return;

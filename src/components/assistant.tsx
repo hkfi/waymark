@@ -15,8 +15,17 @@ import {
 } from "../assistant";
 import { codexAppSessionStart, codexAppSessionStop, codexAppTurnSend, codexLogin, codexRunStructured, codexStatus, isTauri } from "../tauri";
 import type { CodexRoute, CodexStatus, DraftNote, DraftThread, DraftTicket, Ticket, WaymarkDraftSet, WaymarkProject } from "../types";
-import { createNote, saveThreadSummary, saveThreads, saveTickets } from "../workspace";
+import {
+  planNoteFile,
+  planThreadSummaryFile,
+  projectMemoryPath,
+  saveThreads,
+  saveTickets,
+  writePlannedProjectFile,
+  type PlannedProjectFile,
+} from "../workspace";
 import { lines, recordId } from "../app/model";
+import type { RecordTransaction } from "../app/hooks/useUndoRedoState";
 import { Btn, Card, Notice, cx } from "./primitives";
 
 type AssistantModelChoice = "latest" | "gpt-5.5" | "gpt-5.4" | "gpt-5.4-mini";
@@ -61,12 +70,14 @@ export function AssistantView({
   launchRequest,
   onLaunchConsumed,
   onSaved,
+  recordTransaction,
 }: {
   project: WaymarkProject;
   selection?: AssistantContextSelection;
   launchRequest?: AssistantLaunchRequest | null;
   onLaunchConsumed?: () => void;
   onSaved: () => Promise<void>;
+  recordTransaction: RecordTransaction;
 }) {
   const [status, setStatus] = useState<CodexStatus>({ state: "unavailable", path: null, detail: "Not checked yet." });
   const [mode, setMode] = useState<AssistantMode>("brainstorm");
@@ -349,6 +360,11 @@ Do not draft repo context files, AGENTS.md, or instructions to write into the li
     try {
       const tickets = [...project.tickets];
       let ticketsChanged = false;
+      const notePlans: PlannedProjectFile[] = [];
+      const threadSummaryPlans: PlannedProjectFile[] = [];
+      const noteReservedPaths = new Set<string>();
+      const threadSummaryReservedPaths = new Set<string>();
+
       for (const [index, draft] of drafts.tickets.entries()) {
         if (!selected[`ticket:${index}`]) continue;
         const normalized = normalizeTicketDraft(draft);
@@ -373,40 +389,75 @@ Do not draft repo context files, AGENTS.md, or instructions to write into the li
         else tickets.push(nextTicket);
         ticketsChanged = true;
       }
-      if (ticketsChanged) await saveTickets(project, tickets);
 
       for (const [index, idea] of drafts.ideas.entries()) {
         if (!selected[`idea:${index}`]) continue;
         const normalized = normalizeNoteDraft(idea);
-        await createNote(project, "idea", normalized.title, normalized.body, normalized.linked_tickets ?? []);
+        notePlans.push(await planNoteFile(
+          project,
+          "idea",
+          normalized.title,
+          normalized.body,
+          normalized.linked_tickets ?? [],
+          noteReservedPaths,
+        ));
       }
 
       for (const [index, decision] of drafts.decisions.entries()) {
         if (!selected[`decision:${index}`]) continue;
         const normalized = normalizeNoteDraft(decision);
-        await createNote(project, "decision", normalized.title, normalized.body, normalized.linked_tickets ?? []);
+        notePlans.push(await planNoteFile(
+          project,
+          "decision",
+          normalized.title,
+          normalized.body,
+          normalized.linked_tickets ?? [],
+          noteReservedPaths,
+        ));
       }
 
       const threads = [...project.threads];
       for (const [index, thread] of drafts.threads.entries()) {
         if (!selected[`thread:${index}`]) continue;
         const normalized = normalizeThreadDraft(thread);
-        const summaryFile = normalized.summary?.trim()
-          ? await saveThreadSummary(project, normalized.title, normalized.summary)
-          : undefined;
+        const summaryPlan = normalized.summary?.trim()
+          ? await planThreadSummaryFile(project, normalized.title, normalized.summary, threadSummaryReservedPaths)
+          : null;
+        if (summaryPlan) threadSummaryPlans.push(summaryPlan);
         threads.push({
           id: recordId(normalized.title),
           provider: "codex",
           title: normalized.title,
           status: normalized.status,
           url: normalized.url ?? null,
-          summary_file: summaryFile,
+          summary_file: summaryPlan?.relativePath,
           linked_tickets: normalized.linked_tickets ?? [],
         });
       }
-      if (threads.length !== project.threads.length) await saveThreads(project, threads);
+      const threadsChanged = threads.length !== project.threads.length;
+      const transactionPaths = [
+        ticketsChanged ? projectMemoryPath(project, "tickets.yaml") : null,
+        threadsChanged ? projectMemoryPath(project, "threads.yaml") : null,
+        ...notePlans.map((plan) => plan.path),
+        ...threadSummaryPlans.map((plan) => plan.path),
+      ].filter((path): path is string => Boolean(path));
 
-      setNotice("Saved selected assistant drafts.");
+      await recordTransaction(
+        "Save assistant drafts",
+        transactionPaths,
+        async () => {
+          if (ticketsChanged) await saveTickets(project, tickets);
+          for (const plan of notePlans) {
+            await writePlannedProjectFile(plan);
+          }
+          for (const plan of threadSummaryPlans) {
+            await writePlannedProjectFile(plan);
+          }
+          if (threadsChanged) await saveThreads(project, threads);
+        },
+        "Saved selected assistant drafts.",
+      );
+
       setDrafts(emptyDraftSet("codex"));
       setSelected({});
       await onSaved();

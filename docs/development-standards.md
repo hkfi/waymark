@@ -33,9 +33,18 @@
 ## Feedback Patterns
 
 - Use app-level toasts for transient operation feedback such as reloaded workspaces, saved prompts, captured records, linked files, update checks, and command availability messages.
+- When an explicit project-memory write is undoable, the success toast should expose the next useful history action such as Undo or Redo.
 - Do not render transient operation feedback as inline cards in the main cockpit flow; it shifts the content and makes routine actions feel heavier than they are.
 - Keep inline notices for contextual, workflow-local information that should remain near the control it explains, such as form validation errors, disabled Tauri-only form warnings, Assistant connection context, and draft parsing warnings.
 - App-level toast messages should flow through the shared feedback state rather than each component inventing its own notification UI.
+
+## Undo And Redo
+
+- Record undoable project-memory writes as named file transactions with exact before and after snapshots.
+- Keep undo/redo history session-scoped. Do not store history in the Waymark workspace or browser storage.
+- Conflict-check every affected file before undo or redo; block the whole operation if any file no longer matches the expected snapshot.
+- Treat bulk Assistant saves and generated handoff prompts as one transaction so users can reverse the reviewed write in one step.
+- Do not use undo/redo for workspace creation, project creation, app updates, external linked assets, or private AI thread data.
 
 ## Tauri And Filesystem
 
@@ -70,6 +79,15 @@ pnpm build
 cargo check --manifest-path src-tauri/Cargo.toml
 pnpm tauri build --debug
 ```
+
+For undo/redo or project-memory write changes, run the focused Vitest coverage first:
+
+```bash
+pnpm test:undo
+pnpm test
+```
+
+Use `pnpm smoke:native:undo` for a native Tauri smoke pass when a change needs proof that UI actions mutate real local YAML files. This requires `tauri-driver` (`cargo install tauri-driver`) and runs on the official Tauri WebDriver desktop platforms: Linux and Windows. Official `tauri-driver` does not support macOS WKWebView, so macOS native smoke coverage needs a manual Tauri pass or a separate macOS automation driver.
 
 For UI changes, also run the app and inspect the changed workflow visually.
 

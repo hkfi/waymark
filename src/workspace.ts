@@ -111,6 +111,22 @@ export type HandoffContextOption = {
   defaultIncluded: boolean;
 };
 
+export type PlannedProjectFile = {
+  path: string;
+  relativePath: string;
+  contents: string;
+};
+
+export type PlannedNoteFile = PlannedProjectFile & {
+  id: string;
+};
+
+export type PlannedGeneratedPrompt = PlannedProjectFile & {
+  ticket: Ticket;
+  promptPath: string;
+  prompt: string;
+};
+
 const PROJECT_SCAFFOLD_ITEMS: ProjectScaffoldItem[] = [
   { label: "tickets.yaml", path: "tickets.yaml", kind: "file" },
   { label: "links.yaml", path: "links.yaml", kind: "file" },
@@ -149,6 +165,10 @@ export function joinPath(...parts: string[]) {
     .join("/")
     .replace(/\/+/g, "/")
     .replace(":/", "://");
+}
+
+export function projectMemoryPath(project: WaymarkProject, relativePath: string) {
+  return joinPath(project.rootPath, relativePath);
 }
 
 function dumpYaml(value: unknown) {
@@ -732,7 +752,7 @@ export async function missingProjectScaffold(project: WaymarkProject) {
 }
 
 export async function saveProjectConfig(project: WaymarkProject, config: ProjectConfig) {
-  await writeTextFile(joinPath(project.rootPath, "project.yaml"), dumpYaml(config));
+  await writeTextFile(projectMemoryPath(project, "project.yaml"), dumpYaml(config));
 }
 
 export async function ensureProjectScaffold(project: WaymarkProject) {
@@ -854,22 +874,49 @@ export async function buildRepoInstructionDrafts(project: WaymarkProject, repos:
 }
 
 export async function saveTickets(project: WaymarkProject, tickets: Ticket[]) {
-  await writeTextFile(joinPath(project.rootPath, "tickets.yaml"), dumpYaml({ version: 1, tickets }));
+  await writeTextFile(projectMemoryPath(project, "tickets.yaml"), dumpYaml({ version: 1, tickets }));
 }
 
 export async function saveThreads(project: WaymarkProject, threads: ThreadRecord[]) {
-  await writeTextFile(joinPath(project.rootPath, "threads.yaml"), dumpYaml({ version: 1, threads }));
+  await writeTextFile(projectMemoryPath(project, "threads.yaml"), dumpYaml({ version: 1, threads }));
+}
+
+export async function writePlannedProjectFile(file: PlannedProjectFile) {
+  await writeTextFile(file.path, file.contents);
+}
+
+export async function planThreadSummaryFile(
+  project: WaymarkProject,
+  title: string,
+  body: string,
+  reservedPaths = new Set<string>(),
+): Promise<PlannedProjectFile> {
+  const id = slugify(title) || `codex-${Date.now()}`;
+  const basePath = `ai/thread-summaries/${today()}-${id}`;
+  let suffix = 1;
+
+  while (true) {
+    const relativePath = `${basePath}${suffix === 1 ? "" : `-${suffix}`}.md`;
+    if (!reservedPaths.has(relativePath) && !(await pathExists(projectMemoryPath(project, relativePath)))) {
+      reservedPaths.add(relativePath);
+      return {
+        path: projectMemoryPath(project, relativePath),
+        relativePath,
+        contents: `# ${title}\n\n${body.trim()}\n`,
+      };
+    }
+    suffix += 1;
+  }
 }
 
 export async function saveThreadSummary(project: WaymarkProject, title: string, body: string) {
-  const id = slugify(title) || `codex-${Date.now()}`;
-  const path = `ai/thread-summaries/${today()}-${id}.md`;
-  await writeTextFile(joinPath(project.rootPath, path), `# ${title}\n\n${body.trim()}\n`);
-  return path;
+  const plan = await planThreadSummaryFile(project, title, body);
+  await writePlannedProjectFile(plan);
+  return plan.relativePath;
 }
 
 export async function saveLinks(project: WaymarkProject, links: LinkRecord[]) {
-  await writeTextFile(joinPath(project.rootPath, "links.yaml"), dumpYaml({ version: 1, links }));
+  await writeTextFile(projectMemoryPath(project, "links.yaml"), dumpYaml({ version: 1, links }));
 }
 
 export function shouldIncludeContextInHandoff(link: LinkRecord) {
@@ -1012,12 +1059,38 @@ export async function createNote(
   body: string,
   linkedTickets: string[],
 ) {
-  const id = slugify(title);
+  const plan = await planNoteFile(project, type, title, body, linkedTickets);
+  await writePlannedProjectFile(plan);
+  return plan.relativePath;
+}
+
+export async function planNoteFile(
+  project: WaymarkProject,
+  type: "idea" | "decision",
+  title: string,
+  body: string,
+  linkedTickets: string[],
+  reservedPaths = new Set<string>(),
+): Promise<PlannedNoteFile> {
+  const baseId = slugify(title) || type;
   const folder = type === "idea" ? "ideas" : "decisions";
-  const path = joinPath(project.rootPath, folder, `${id}.md`);
   const status = type === "idea" ? "open" : "accepted";
-  const markdown = `---\nid: ${id}\ntitle: ${title}\ndate: ${today()}\nstatus: ${status}\nlinked_tickets:${linkedTickets.length ? `\n${linkedTickets.map((ticket) => `  - ${ticket}`).join("\n")}` : " []"}\n---\n\n# ${title}\n\n${body.trim()}\n`;
-  await writeTextFile(path, markdown);
+  let suffix = 1;
+
+  while (true) {
+    const id = `${baseId}${suffix === 1 ? "" : `-${suffix}`}`;
+    const relativePath = `${folder}/${id}.md`;
+    if (!reservedPaths.has(relativePath) && !(await pathExists(projectMemoryPath(project, relativePath)))) {
+      reservedPaths.add(relativePath);
+      return {
+        id,
+        path: projectMemoryPath(project, relativePath),
+        relativePath,
+        contents: `---\nid: ${id}\ntitle: ${title}\ndate: ${today()}\nstatus: ${status}\nlinked_tickets:${linkedTickets.length ? `\n${linkedTickets.map((ticket) => `  - ${ticket}`).join("\n")}` : " []"}\n---\n\n# ${title}\n\n${body.trim()}\n`,
+      };
+    }
+    suffix += 1;
+  }
 }
 
 async function allocateGeneratedPromptPath(
@@ -1030,7 +1103,7 @@ async function allocateGeneratedPromptPath(
 
   while (true) {
     const promptPath = `${basePath}${suffix === 1 ? "" : `-${suffix}`}.md`;
-    if (!reservedPaths.has(promptPath) && !(await pathExists(joinPath(project.rootPath, promptPath)))) {
+    if (!reservedPaths.has(promptPath) && !(await pathExists(projectMemoryPath(project, promptPath)))) {
       reservedPaths.add(promptPath);
       return promptPath;
     }
@@ -1039,30 +1112,39 @@ async function allocateGeneratedPromptPath(
 }
 
 export async function saveGeneratedPrompt(project: WaymarkProject, ticket: Ticket, prompt: string) {
-  const promptPath = await allocateGeneratedPromptPath(project, ticket);
-  await writeTextFile(joinPath(project.rootPath, promptPath), prompt);
-  const tickets = project.tickets.map((candidate) =>
-    candidate.id === ticket.id
-      ? {
-          ...candidate,
-          generated_prompts: Array.from(new Set([...(candidate.generated_prompts ?? []), promptPath])),
-        }
-      : candidate,
-  );
-  await saveTickets(project, tickets);
-  return promptPath;
+  const [plan] = await planGeneratedPrompts(project, [{ ticket, prompt }]);
+  const saved = await saveGeneratedPromptPlan(project, [plan]);
+  return saved[0]?.promptPath ?? plan.promptPath;
 }
 
-export async function saveGeneratedPrompts(
+export async function planGeneratedPrompts(
   project: WaymarkProject,
   prompts: Array<{ ticket: Ticket; prompt: string }>,
-) {
+): Promise<PlannedGeneratedPrompt[]> {
   const reservedPaths = new Set<string>();
-  const saved: Array<{ ticketId: string; promptPath: string }> = [];
+  const plans: PlannedGeneratedPrompt[] = [];
   for (const { ticket, prompt } of prompts) {
     const promptPath = await allocateGeneratedPromptPath(project, ticket, reservedPaths);
-    await writeTextFile(joinPath(project.rootPath, promptPath), prompt);
-    saved.push({ ticketId: ticket.id, promptPath });
+    plans.push({
+      ticket,
+      prompt,
+      promptPath,
+      relativePath: promptPath,
+      path: projectMemoryPath(project, promptPath),
+      contents: prompt,
+    });
+  }
+  return plans;
+}
+
+export async function saveGeneratedPromptPlan(
+  project: WaymarkProject,
+  plans: PlannedGeneratedPrompt[],
+) {
+  const saved: Array<{ ticketId: string; promptPath: string }> = [];
+  for (const plan of plans) {
+    await writePlannedProjectFile(plan);
+    saved.push({ ticketId: plan.ticket.id, promptPath: plan.promptPath });
   }
 
   const promptsByTicket = new Map<string, string[]>();
@@ -1079,6 +1161,14 @@ export async function saveGeneratedPrompts(
   });
   await saveTickets(project, tickets);
   return saved;
+}
+
+export async function saveGeneratedPrompts(
+  project: WaymarkProject,
+  prompts: Array<{ ticket: Ticket; prompt: string }>,
+) {
+  const plans = await planGeneratedPrompts(project, prompts);
+  return saveGeneratedPromptPlan(project, plans);
 }
 
 export function buildPrompt(project: WaymarkProject, ticket: Ticket, selectedContext: string[]) {

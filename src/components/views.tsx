@@ -319,6 +319,7 @@ function TicketRow({
       onClick={onClick}
       ariaLabel={`Open ticket ${ticket.title}`}
       selected={selected}
+      testId={`ticket-row-${ticket.id}`}
       className={cx(multiSel && !selected && "bg-[oklch(0.78_0.135_75_/_0.06)]")}
     >
       <div

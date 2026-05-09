@@ -6,6 +6,7 @@ import type { LinkRecord, NoteRecord, ThreadRecord, Ticket, TicketStatus, Waymar
 import { buildPrompt, type HandoffContextOption } from "../workspace";
 import { activeLane, projectFile, resolveProjectPath, tokenEstimate, type InspectorMode } from "../app/model";
 import { buildNoteRecommendationPrompt, buildTicketRecommendationPrompt, type AssistantLaunchInput, type AssistantLaunchRequest } from "../assistant";
+import type { RecordTransaction } from "../app/hooks/useUndoRedoState";
 import { AssistantView } from "./assistant";
 import { Btn, Card, Cell, CommandShortcutBadge, DataRow, EmptyRow, StatusChip, cx } from "./primitives";
 
@@ -36,6 +37,7 @@ export function Inspector({
   assistantLaunchRequest,
   onAssistantLaunchConsumed,
   onAskAssistant,
+  recordTransaction,
 }: {
   scope: "tickets" | "memory" | "context";
   mode: InspectorMode;
@@ -63,6 +65,7 @@ export function Inspector({
   assistantLaunchRequest?: AssistantLaunchRequest | null;
   onAssistantLaunchConsumed: () => void;
   onAskAssistant: (request: AssistantLaunchInput) => void;
+  recordTransaction: RecordTransaction;
 }) {
   const bundleSize = multi.length;
 
@@ -159,6 +162,7 @@ export function Inspector({
             launchRequest={assistantLaunchRequest}
             onLaunchConsumed={onAssistantLaunchConsumed}
             onSaved={onSaved}
+            recordTransaction={recordTransaction}
           />
         </div>
       ) : mode === "thread" ? (
@@ -645,6 +649,7 @@ prompts: ${ticket.generated_prompts?.length ?? 0}`}
         {lane !== "done" ? <Btn variant="ghost" onClick={() => onStatus(ticket, "done")}>Mark done</Btn> : null}
         <Btn
           variant="danger"
+          data-testid="delete-ticket-button"
           onClick={() => {
             if (window.confirm(`Delete ticket "${ticket.title}"? This removes it from tickets.yaml. Linked notes, prompts, and thread summaries are not deleted.`)) {
               onDelete(ticket);
