@@ -45,7 +45,8 @@ Do not add SQLite as canonical storage.
 ## Main Modules
 
 - `src/App.tsx`: thin application entrypoint that mounts the cockpit provider and shell.
-- `src/app/AppProvider.tsx`: focused React contexts for workspace data, selection, navigation, filters, layout, modals, feedback, and project write actions.
+- `src/app/AppProvider.tsx`: thin app state composition boundary that layers focused provider components.
+- `src/app/providers/`: focused React context providers for workspace data, selection, navigation, filters, layout, modals, feedback, undo/redo, keyboard shortcuts, and project write actions.
 - `src/app/AppShell.tsx`: composed cockpit regions that subscribe to only the context slices they render or invoke.
 - `src/app/hooks/`: small state-owner hooks for workspace loading, selection, navigation, filters, pane layout, modal state, feedback, and explicit project writes.
 - `src/app/model.ts`: cockpit UI types, constants, and pure helpers shared by views.
