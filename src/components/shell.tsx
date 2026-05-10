@@ -41,6 +41,22 @@ export function WorkspaceToolbar({
         ? `Update ${updateVersion}`
         : "Update";
   const showUpdate = updateStatus === "available" || updateStatus === "installing" || updateStatus === "restarting";
+  const updateButton = showUpdate ? (
+    <ToolbarButton
+      onClick={onInstallUpdate}
+      disabled={updateStatus !== "available"}
+      title={updateVersion ? `Install Waymark ${updateVersion}` : "Install app update"}
+      aria-label={updateVersion ? `Install Waymark ${updateVersion}` : "Install app update"}
+      className="border-[oklch(0.74_0.13_150_/_0.35)] bg-[oklch(0.74_0.13_150_/_0.12)] text-lane-done hover:bg-[oklch(0.74_0.13_150_/_0.18)]"
+    >
+      {updateStatus === "available" ? (
+        <Download size={12} />
+      ) : (
+        <RefreshCw size={12} className="animate-spin" />
+      )}
+      {updateLabel}
+    </ToolbarButton>
+  ) : null;
 
   return (
     <div
@@ -48,7 +64,9 @@ export function WorkspaceToolbar({
       className="app-toolbar grid items-center border-b border-line bg-surface-rail select-none min-w-0 overflow-hidden"
       style={style}
     >
-      <div data-tauri-drag-region className="app-toolbar-brand min-w-0" aria-hidden="true" />
+      <div data-tauri-drag-region className="app-toolbar-brand flex items-center gap-1 pr-2 min-w-0">
+        {updateButton}
+      </div>
       <div data-tauri-drag-region className="app-toolbar-path flex items-center justify-center gap-2 font-mono text-[11px] text-ink-faint min-w-0 px-3 overflow-hidden">
         <span data-tauri-drag-region className="truncate min-w-0 text-ink-soft" title={rootPath}>{rootPath}</span>
         <span data-tauri-drag-region className="text-ink-mute shrink-0">/</span>
@@ -66,21 +84,6 @@ export function WorkspaceToolbar({
         <span data-tauri-drag-region className="h-[22px] px-2 rounded-[3px] text-[11px] text-ink-faint border border-line-soft bg-surface-2 inline-flex items-center gap-1.5">
           <GitBranch size={12} className="pointer-events-none" /> main
         </span>
-        {showUpdate ? (
-          <ToolbarButton
-            onClick={onInstallUpdate}
-            disabled={updateStatus !== "available"}
-            title={updateVersion ? `Install Waymark ${updateVersion}` : "Install app update"}
-            className="border-[oklch(0.74_0.13_150_/_0.35)] bg-[oklch(0.74_0.13_150_/_0.12)] text-lane-done hover:bg-[oklch(0.74_0.13_150_/_0.18)]"
-          >
-            {updateStatus === "available" ? (
-              <Download size={12} />
-            ) : (
-              <RefreshCw size={12} className="animate-spin" />
-            )}
-            {updateLabel}
-          </ToolbarButton>
-        ) : null}
         <ToolbarButton onClick={onRefresh} title="Reload workspace">
           <RefreshCw size={12} /> Reload
         </ToolbarButton>

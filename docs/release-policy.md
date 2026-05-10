@@ -8,6 +8,7 @@ Waymark uses stable releases gated by intentional version bumps.
 - A GitHub Release is published when a merged change bumps the app version.
 - Releases are signed Tauri desktop builds with updater metadata attached to the GitHub Release.
 - The app may check for updates in the background, but install is always an explicit user click.
+- When a newer signed version is available, the app shows an update button at the left end of the title bar.
 - The app updater only installs a newer signed version from the configured GitHub Release endpoint.
 
 ## Versioning
