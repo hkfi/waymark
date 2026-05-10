@@ -1,9 +1,10 @@
-import { Bot, Download, FileText, FolderOpen, GitBranch, LayoutGrid, ListChecks, ListOrdered, Plus, RefreshCw, Search, Sliders, Sparkles, type LucideIcon } from "lucide-react";
+import { AlertTriangle, Bot, Download, FileText, FolderOpen, GitBranch, LayoutGrid, ListChecks, ListOrdered, Plus, RefreshCw, Search, Sparkles, type LucideIcon } from "lucide-react";
 import { useMemo, type ButtonHTMLAttributes, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import type { AppUpdateStatus, Ticket, WaymarkProject, WorkspaceData } from "../types";
 import { projectColor, projectMark, projectStatusKind, type NavId } from "../app/model";
 import { NAV_SHORTCUTS } from "../app/hooks/useKeyboardShortcuts";
 import { Btn, CommandShortcutBadge, cx, LetterMark } from "./primitives";
+import { ticketWarnings } from "../workspace";
 
 export function WorkspaceToolbar({
   workspace,
@@ -468,6 +469,7 @@ export function MainHeader({
   search,
   onSearch,
   searchInputRef,
+  showGapsFilter,
   gapsOnly,
   onToggleGaps,
   onCapture,
@@ -482,6 +484,7 @@ export function MainHeader({
   search: string;
   onSearch: (value: string) => void;
   searchInputRef: RefObject<HTMLInputElement | null>;
+  showGapsFilter: boolean;
   gapsOnly: boolean;
   onToggleGaps: () => void;
   onCapture: () => void;
@@ -490,6 +493,13 @@ export function MainHeader({
 }) {
   const handoffLabel =
     selectedCount > 0 ? `Handoff ${selectedCount}` : selectedTicket ? `Handoff: ${selectedTicket.title}` : "Handoff";
+  const gapCount = useMemo(() => {
+    if (!project) return 0;
+    return project.tickets.filter((ticket) => ticket.status !== "idea" && ticketWarnings(project, ticket).length > 0).length;
+  }, [project]);
+  const gapsTitle = gapsOnly
+    ? "Showing tickets with readiness gaps. Click to show all tickets."
+    : "Show only tickets with readiness gaps: missing summary, acceptance criteria, repos, files, decisions, or AI threads.";
 
   return (
     <>
@@ -525,14 +535,34 @@ export function MainHeader({
           />
           <CommandShortcutBadge value="K" tone="subtle" />
         </div>
-        <Btn
-          variant={gapsOnly ? "default" : "ghost"}
-          title="Show only tickets with missing context"
-          onClick={onToggleGaps}
-          aria-pressed={gapsOnly}
-        >
-          <Sliders size={13} /> Filters
-        </Btn>
+        {showGapsFilter ? (
+          <Btn
+            variant={gapsOnly ? "default" : "ghost"}
+            title={gapsTitle}
+            onClick={onToggleGaps}
+            aria-pressed={gapsOnly}
+            aria-label={gapsOnly ? "Clear readiness gap filter" : "Show only tickets with readiness gaps"}
+            className={cx(
+              "min-w-[132px] justify-between",
+              gapsOnly && "border-warn bg-[oklch(0.82_0.14_90_/_0.10)] text-warn hover:bg-[oklch(0.82_0.14_90_/_0.16)] hover:text-ink",
+            )}
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <AlertTriangle size={13} />
+              <span>{gapsOnly ? "Gaps only" : "Readiness gaps"}</span>
+            </span>
+            <span
+              className={cx(
+                "ml-1 inline-flex h-4 min-w-[18px] items-center justify-center rounded-[3px] border px-1 font-mono text-[10px] leading-none",
+                gapsOnly
+                  ? "border-[oklch(0.82_0.14_90_/_0.36)] bg-[oklch(0.82_0.14_90_/_0.13)] text-warn"
+                  : "border-line-soft bg-surface-2 text-ink-mute",
+              )}
+            >
+              {gapCount}
+            </span>
+          </Btn>
+        ) : null}
         <Btn variant="ghost" onClick={onCapture}>
           <Plus size={13} /> Capture
         </Btn>
