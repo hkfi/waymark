@@ -163,7 +163,7 @@ The assistant should not:
 
 ## App Update Model
 
-Waymark uses Tauri's signed updater and GitHub Releases. `main` should remain releasable, but desktop updates are published only when the app version is intentionally bumped. The release workflow creates signed updater artifacts and `latest.json`; the app checks that static metadata and shows an update indicator only when a newer signed version exists.
+Waymark uses Tauri's signed updater and GitHub Releases. `main` should remain releasable, but desktop updates are published only when the app version is intentionally bumped. The release workflow creates signed updater artifacts and `latest.json`; the app checks that static metadata and shows an update indicator only when a newer signed version exists. macOS app code signing is separate from updater signing: MVP releases are ad-hoc signed until Apple Developer ID signing and notarization are configured.
 
 Updates should:
 

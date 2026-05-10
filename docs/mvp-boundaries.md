@@ -50,7 +50,7 @@ These promotions allow:
 - contextual Codex recommendation actions for meaningful project-memory fields, routed through the same review-gated Assistant model
 - review-gated saves of accepted tickets, ideas, decisions, thread references, and summaries
 - a CLI fallback route when the experimental app-server route is unavailable
-- publishing signed desktop builds through GitHub Releases when the app version changes
+- publishing signed updater artifacts and downloadable desktop builds through GitHub Releases when the app version changes
 - checking GitHub Release updater metadata and showing an update indicator when a newer signed version exists
 - installing the update only after the user explicitly clicks the update indicator
 - explicitly adding user-picked local repos to a Waymark project

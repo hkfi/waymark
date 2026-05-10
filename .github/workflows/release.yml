@@ -125,7 +125,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: Waymark v__VERSION__
-          releaseBody: "Signed Waymark desktop release. The app updater reads latest.json from this GitHub Release."
+          releaseBody: "Signed Waymark desktop release. The app updater reads latest.json from this GitHub Release. macOS builds are ad-hoc signed but not notarized yet, so first launch may require approving Waymark in Privacy & Security."
           generateReleaseNotes: true
           releaseDraft: false
           prerelease: false
