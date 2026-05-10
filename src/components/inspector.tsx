@@ -1,5 +1,5 @@
-import { AlertTriangle, ArrowRight, CheckSquare, Copy, FileText, HardDrive, Link2, ListOrdered, MessageSquareText, Send, Sparkles, Square, Trash2, type LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { AlertTriangle, ArrowRight, Check, CheckSquare, Copy, FileText, HardDrive, Link2, ListOrdered, MessageSquareText, Send, Sparkles, Square, Trash2, type LucideIcon } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 import { contextRowRemoveConfirmation, contextRowRemoveLabel, type ContextRow } from "../contextRows";
 import { openPath } from "../tauri";
 import type { LinkRecord, NoteRecord, ThreadRecord, Ticket, TicketStatus, WaymarkProject, WorkspaceData } from "../types";
@@ -785,12 +785,10 @@ function InspectorPrompt({
             contentClassName="min-h-0 flex-1 overflow-y-auto"
             sourceClassName="text-[11px]"
             actions={
-              <button
-                onClick={() => navigator.clipboard?.writeText(prompt).catch(() => undefined)}
+              <CopyPromptButton
+                prompt={prompt}
                 className="inline-flex items-center gap-1 px-1 py-0.5 text-ink-faint rounded-[3px] text-[11px] hover:bg-surface-3 hover:text-ink cursor-pointer"
-              >
-                <Copy size={11} /> Copy
-              </button>
+              />
             }
           />
         </InspectorSection>
@@ -813,12 +811,88 @@ function InspectorPrompt({
         <Btn variant="primary" onClick={onSendHandoff}>
           <Sparkles size={11} /> Save & copy <CommandShortcutBadge value="↵" tone="primary" />
         </Btn>
-        <Btn onClick={() => navigator.clipboard?.writeText(prompt).catch(() => undefined)}>
-          <Copy size={11} /> Copy prompt
-        </Btn>
+        <CopyPromptButton prompt={prompt} footer />
       </InspectorActions>
     </>
   );
+}
+
+function CopyPromptButton({
+  prompt,
+  footer = false,
+  className,
+}: {
+  prompt: string;
+  footer?: boolean;
+  className?: string;
+}) {
+  const [copiedAt, setCopiedAt] = useState(0);
+  const copied = copiedAt > 0;
+
+  useEffect(() => {
+    if (!copiedAt) return undefined;
+    const timeout = window.setTimeout(() => setCopiedAt(0), 2200);
+    return () => window.clearTimeout(timeout);
+  }, [copiedAt]);
+
+  async function copyPrompt() {
+    if (await copyText(prompt)) {
+      setCopiedAt(Date.now());
+    } else {
+      setCopiedAt(0);
+    }
+  }
+
+  const content = (
+    <>
+      {copied ? <Check size={11} /> : <Copy size={11} />}
+      {copied ? "Copied" : footer ? "Copy prompt" : "Copy"}
+    </>
+  );
+
+  if (footer) {
+    return (
+      <Btn onClick={copyPrompt} aria-live="polite">
+        {content}
+      </Btn>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={copyPrompt}
+      aria-live="polite"
+      className={className}
+    >
+      {content}
+    </button>
+  );
+}
+
+async function copyText(value: string) {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch {
+      // Fall back for local previews where Clipboard API permissions are not granted.
+    }
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.inset = "0 auto auto -9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    document.execCommand("copy");
+    return true;
+  } finally {
+    document.body.removeChild(textarea);
+  }
 }
 
 function InspectorThread({
