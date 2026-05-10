@@ -7,7 +7,7 @@ Waymark uses stable releases gated by intentional version bumps.
 - `main` should stay releasable, but not every merge to `main` publishes an app update.
 - A GitHub Release is published when a merged change bumps the app version.
 - Releases include signed Tauri updater artifacts with updater metadata attached to the GitHub Release.
-- macOS builds are ad-hoc code-signed until Apple Developer ID signing and notarization are configured.
+- macOS builds are ad-hoc code-signed without hardened runtime until Apple Developer ID signing and notarization are configured.
 - The app may check for updates in the background, but install is always an explicit user click.
 - When a newer signed version is available, the app shows an update button at the left end of the title bar.
 - The app updater only installs a newer signed version from the configured GitHub Release endpoint.
@@ -44,10 +44,20 @@ When a change should not trigger a desktop release, do not bump the app version.
 
 The release workflow runs on pushes to `main`. It publishes only when `src-tauri/tauri.conf.json` has a new version compared with the previous `main` commit. Manual dispatch also publishes the current version.
 
-The macOS app is currently ad-hoc signed with `bundle.macOS.signingIdentity = "-"`. This prevents the bundle from being completely unsigned, which is especially important for Apple Silicon downloads, but it is not Apple notarization. First launch from a browser download may still require approving Waymark in macOS Privacy & Security or clearing quarantine manually:
+The macOS app is currently ad-hoc signed with `bundle.macOS.signingIdentity = "-"` and `bundle.macOS.hardenedRuntime = false`. This prevents the bundle from being completely unsigned, which is especially important for Apple Silicon downloads, but it is not Apple notarization.
+
+Until Developer ID notarization is configured, install MVP macOS builds to the user-local Applications folder:
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/Waymark.app
+mkdir -p ~/Applications
+ditto --noextattr --norsrc /Volumes/Waymark*/Waymark.app ~/Applications/Waymark.app
+open ~/Applications/Waymark.app
+```
+
+First launch from a browser download may still require approving Waymark in macOS Privacy & Security or clearing quarantine manually:
+
+```bash
+xattr -dr com.apple.quarantine ~/Applications/Waymark.app
 ```
 
 Normal no-warning macOS distribution requires Apple Developer ID signing and notarization.
