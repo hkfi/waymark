@@ -43,26 +43,27 @@ export function WorkspaceToolbar({
 
   return (
     <div
+      data-tauri-drag-region
       className="app-toolbar grid items-center border-b border-line bg-surface-rail select-none min-w-0 overflow-hidden"
       style={style}
     >
       <div data-tauri-drag-region className="app-toolbar-brand min-w-0" aria-hidden="true" />
       <div data-tauri-drag-region className="app-toolbar-path flex items-center justify-center gap-2 font-mono text-[11px] text-ink-faint min-w-0 px-3 overflow-hidden">
-        <span className="truncate min-w-0 text-ink-soft" title={rootPath}>{rootPath}</span>
-        <span className="text-ink-mute shrink-0">/</span>
-        <span className="text-ink-soft shrink-0 truncate">
+        <span data-tauri-drag-region className="truncate min-w-0 text-ink-soft" title={rootPath}>{rootPath}</span>
+        <span data-tauri-drag-region className="text-ink-mute shrink-0">/</span>
+        <span data-tauri-drag-region className="text-ink-soft shrink-0 truncate">
           {project?.config.name ?? workspace?.config.name ?? "No workspace"}
         </span>
         {project ? (
           <>
-            <span className="text-ink-mute shrink-0">·</span>
-            <span className="text-ink-mute shrink-0">{project.config.stage}</span>
+            <span data-tauri-drag-region className="text-ink-mute shrink-0">·</span>
+            <span data-tauri-drag-region className="text-ink-mute shrink-0">{project.config.stage}</span>
           </>
         ) : null}
       </div>
-      <div className="app-toolbar-actions flex items-center justify-end gap-1 px-2.5 min-w-0 whitespace-nowrap">
-        <span className="h-[22px] px-2 rounded-[3px] text-[11px] text-ink-faint border border-line-soft bg-surface-2 inline-flex items-center gap-1.5">
-          <GitBranch size={12} /> main
+      <div data-tauri-drag-region className="app-toolbar-actions flex items-center justify-end gap-1 px-2.5 min-w-0 whitespace-nowrap">
+        <span data-tauri-drag-region className="h-[22px] px-2 rounded-[3px] text-[11px] text-ink-faint border border-line-soft bg-surface-2 inline-flex items-center gap-1.5">
+          <GitBranch size={12} className="pointer-events-none" /> main
         </span>
         {showUpdate ? (
           <ToolbarButton

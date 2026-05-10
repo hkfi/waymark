@@ -115,7 +115,11 @@
   height: 100%;
 }
 
-.app-toolbar-actions,
+.app-toolbar,
+.app-toolbar [data-tauri-drag-region] {
+  -webkit-app-region: drag;
+}
+
 .app-toolbar button {
   -webkit-app-region: no-drag;
 }
