@@ -16,8 +16,10 @@ import { MainHeader, PaneResizeHandle, Sidebar, WorkspaceToolbar } from "../comp
 import { CockpitContent } from "../components/views";
 import {
   useFeedback,
+  useFeedbackActions,
   useFilters,
   useLayout,
+  useModalActions,
   useModals,
   useNavigation,
   useProjectActions,
@@ -67,7 +69,7 @@ export function AppShell() {
 }
 
 function ToolbarRegion() {
-  const feedback = useFeedback();
+  const feedback = useFeedbackActions();
   const layout = useLayout();
   const workspace = useWorkspace();
   const updates = useAppUpdates(feedback);
@@ -102,7 +104,7 @@ function ToolbarRegion() {
 }
 
 function SidebarRegion() {
-  const modals = useModals();
+  const modals = useModalActions();
   const navigation = useNavigation();
   const workspace = useWorkspace();
   const showShortcutHints = useCommandKeyHint();
@@ -137,9 +139,9 @@ function MainRegion() {
 
 function MainHeaderRegion() {
   const actions = useProjectActions();
-  const feedback = useFeedback();
+  const feedback = useFeedbackActions();
   const filters = useFilters();
-  const modals = useModals();
+  const modals = useModalActions();
   const navigation = useNavigation();
   const selection = useSelection();
   const workspace = useWorkspace();
@@ -175,9 +177,9 @@ function MainHeaderRegion() {
 
 function MainContentRegion() {
   const actions = useProjectActions();
-  const feedback = useFeedback();
+  const feedback = useFeedbackActions();
   const filters = useFilters();
-  const modals = useModals();
+  const modals = useModalActions();
   const navigation = useNavigation();
   const selection = useSelection();
   const workspace = useWorkspace();

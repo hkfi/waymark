@@ -9,6 +9,16 @@ export function useModalState(setNotice: (value: string) => void) {
   const [repoOnboardingOpen, setRepoOnboardingOpen] = useState(false);
   const [fileModalMode, setFileModalMode] = useState<FileModalMode | null>(null);
 
+  const openCapture = useCallback(() => setCaptureOpen(true), []);
+  const closeCapture = useCallback(() => setCaptureOpen(false), []);
+  const closeCreateWorkspace = useCallback(() => setCreateWorkspaceOpen(false), []);
+  const closeCreateProject = useCallback(() => setCreateProjectOpen(false), []);
+  const openRepoOnboarding = useCallback(() => setRepoOnboardingOpen(true), []);
+  const closeRepoOnboarding = useCallback(() => setRepoOnboardingOpen(false), []);
+  const openFileModal = useCallback(() => setFileModalMode("file"), []);
+  const openLinkModal = useCallback(() => setFileModalMode("link"), []);
+  const closeFileModal = useCallback(() => setFileModalMode(null), []);
+
   const openCreateWorkspace = useCallback(() => {
     setCreateWorkspaceOpen(true);
     if (!isTauri()) {
@@ -30,18 +40,35 @@ export function useModalState(setNotice: (value: string) => void) {
       createProjectOpen,
       repoOnboardingOpen,
       fileModalMode,
-      openCapture: () => setCaptureOpen(true),
-      closeCapture: () => setCaptureOpen(false),
+      openCapture,
+      closeCapture,
       openCreateWorkspace,
-      closeCreateWorkspace: () => setCreateWorkspaceOpen(false),
+      closeCreateWorkspace,
       openCreateProject,
-      closeCreateProject: () => setCreateProjectOpen(false),
-      openRepoOnboarding: () => setRepoOnboardingOpen(true),
-      closeRepoOnboarding: () => setRepoOnboardingOpen(false),
-      openFileModal: () => setFileModalMode("file"),
-      openLinkModal: () => setFileModalMode("link"),
-      closeFileModal: () => setFileModalMode(null),
+      closeCreateProject,
+      openRepoOnboarding,
+      closeRepoOnboarding,
+      openFileModal,
+      openLinkModal,
+      closeFileModal,
     }),
-    [captureOpen, createProjectOpen, createWorkspaceOpen, fileModalMode, openCreateProject, openCreateWorkspace, repoOnboardingOpen],
+    [
+      captureOpen,
+      closeCapture,
+      closeCreateProject,
+      closeCreateWorkspace,
+      closeFileModal,
+      closeRepoOnboarding,
+      createProjectOpen,
+      createWorkspaceOpen,
+      fileModalMode,
+      openCapture,
+      openCreateProject,
+      openCreateWorkspace,
+      openFileModal,
+      openLinkModal,
+      openRepoOnboarding,
+      repoOnboardingOpen,
+    ],
   );
 }

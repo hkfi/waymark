@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import { isTauri } from "../../tauri";
 import type { Ticket, TicketStatus, WaymarkProject } from "../../types";
 import { LANES_IN_QUEUE, type InspectorMode, type NavId } from "../model";
@@ -79,52 +79,130 @@ export function useKeyboardShortcuts({
   redo,
   setNotice,
 }: KeyboardShortcutDeps) {
+  const latest = useRef<KeyboardShortcutDeps | null>(null);
+
+  useLayoutEffect(() => {
+    latest.current = {
+      project,
+      nav,
+      setNav,
+      selectedTicket,
+      selectTicket,
+      toggleMulti,
+      editTicket,
+      clearEditingTicket,
+      setInspectorMode,
+      changeStatus,
+      sendHandoff,
+      zoomIn,
+      zoomOut,
+      resetZoom,
+      refreshWorkspace,
+      chooseWorkspace,
+      search,
+      setSearch,
+      searchInputRef,
+      captureOpen,
+      createWorkspaceOpen,
+      createProjectOpen,
+      fileModalOpen,
+      repoOnboardingOpen,
+      editingTicketOpen,
+      openCapture,
+      closeCapture,
+      closeCreateWorkspace,
+      closeCreateProject,
+      closeFileModal,
+      closeRepoOnboarding,
+      undo,
+      redo,
+      setNotice,
+    };
+  });
+
   useEffect(() => {
-    const modalOpen = captureOpen || createWorkspaceOpen || createProjectOpen || fileModalOpen || repoOnboardingOpen || editingTicketOpen;
-
-    function closeTopModal() {
-      if (editingTicketOpen) {
-        clearEditingTicket();
-        return true;
-      }
-      if (repoOnboardingOpen) {
-        closeRepoOnboarding();
-        return true;
-      }
-      if (fileModalOpen) {
-        closeFileModal();
-        return true;
-      }
-      if (captureOpen) {
-        closeCapture();
-        return true;
-      }
-      if (createProjectOpen) {
-        closeCreateProject();
-        return true;
-      }
-      if (createWorkspaceOpen) {
-        closeCreateWorkspace();
-        return true;
-      }
-      return false;
-    }
-
-    function visibleTickets() {
-      if (!project) return [];
-      return TICKET_ORDER.flatMap((status) => project.tickets.filter((ticket) => ticket.status === status));
-    }
-
-    function selectRelativeTicket(delta: number) {
-      const tickets = visibleTickets();
-      if (tickets.length === 0) return;
-      const current = selectedTicket ? tickets.findIndex((ticket) => ticket.id === selectedTicket.id) : -1;
-      const next = current < 0 ? (delta > 0 ? 0 : tickets.length - 1) : (current + delta + tickets.length) % tickets.length;
-      selectTicket(tickets[next]);
-    }
-
     function handleKeydown(event: KeyboardEvent) {
-      if (event.defaultPrevented) return;
+      const current = latest.current;
+      if (!current || event.defaultPrevented) return;
+
+      const {
+        project,
+        nav,
+        setNav,
+        selectedTicket,
+        selectTicket,
+        toggleMulti,
+        editTicket,
+        clearEditingTicket,
+        setInspectorMode,
+        changeStatus,
+        sendHandoff,
+        zoomIn,
+        zoomOut,
+        resetZoom,
+        refreshWorkspace,
+        chooseWorkspace,
+        search,
+        setSearch,
+        searchInputRef,
+        captureOpen,
+        createWorkspaceOpen,
+        createProjectOpen,
+        fileModalOpen,
+        repoOnboardingOpen,
+        editingTicketOpen,
+        openCapture,
+        closeCapture,
+        closeCreateWorkspace,
+        closeCreateProject,
+        closeFileModal,
+        closeRepoOnboarding,
+        undo,
+        redo,
+        setNotice,
+      } = current;
+      const modalOpen = captureOpen || createWorkspaceOpen || createProjectOpen || fileModalOpen || repoOnboardingOpen || editingTicketOpen;
+
+      function closeTopModal() {
+        if (editingTicketOpen) {
+          clearEditingTicket();
+          return true;
+        }
+        if (repoOnboardingOpen) {
+          closeRepoOnboarding();
+          return true;
+        }
+        if (fileModalOpen) {
+          closeFileModal();
+          return true;
+        }
+        if (captureOpen) {
+          closeCapture();
+          return true;
+        }
+        if (createProjectOpen) {
+          closeCreateProject();
+          return true;
+        }
+        if (createWorkspaceOpen) {
+          closeCreateWorkspace();
+          return true;
+        }
+        return false;
+      }
+
+      function visibleTickets() {
+        if (!project) return [];
+        return TICKET_ORDER.flatMap((status) => project.tickets.filter((ticket) => ticket.status === status));
+      }
+
+      function selectRelativeTicket(delta: number) {
+        const tickets = visibleTickets();
+        if (tickets.length === 0) return;
+        const currentTicket = selectedTicket ? tickets.findIndex((ticket) => ticket.id === selectedTicket.id) : -1;
+        const next = currentTicket < 0 ? (delta > 0 ? 0 : tickets.length - 1) : (currentTicket + delta + tickets.length) % tickets.length;
+        selectTicket(tickets[next]);
+      }
 
       const key = event.key.toLowerCase();
       const command = event.metaKey || event.ctrlKey;
@@ -200,9 +278,9 @@ export function useKeyboardShortcuts({
 
       if (command && (key === "[" || key === "]")) {
         event.preventDefault();
-        const current = NAV_SHORTCUTS.indexOf(nav);
+        const currentNav = NAV_SHORTCUTS.indexOf(nav);
         const delta = key === "]" ? 1 : -1;
-        setNav(NAV_SHORTCUTS[(current + delta + NAV_SHORTCUTS.length) % NAV_SHORTCUTS.length]);
+        setNav(NAV_SHORTCUTS[(currentNav + delta + NAV_SHORTCUTS.length) % NAV_SHORTCUTS.length]);
         return;
       }
 
@@ -292,42 +370,7 @@ export function useKeyboardShortcuts({
 
     window.addEventListener("keydown", handleKeydown);
     return () => window.removeEventListener("keydown", handleKeydown);
-  }, [
-    captureOpen,
-    changeStatus,
-    chooseWorkspace,
-    clearEditingTicket,
-    closeCapture,
-    closeCreateProject,
-    closeCreateWorkspace,
-    closeFileModal,
-    closeRepoOnboarding,
-    createProjectOpen,
-    createWorkspaceOpen,
-    editTicket,
-    editingTicketOpen,
-    fileModalOpen,
-    nav,
-    openCapture,
-    project,
-    refreshWorkspace,
-    repoOnboardingOpen,
-    search,
-    searchInputRef,
-    selectTicket,
-    selectedTicket,
-    sendHandoff,
-    setInspectorMode,
-    setNav,
-    setNotice,
-    setSearch,
-    toggleMulti,
-    undo,
-    redo,
-    resetZoom,
-    zoomIn,
-    zoomOut,
-  ]);
+  }, []);
 }
 
 function isTypingTarget(target: EventTarget | null) {

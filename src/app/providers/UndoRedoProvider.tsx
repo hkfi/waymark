@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useUndoRedoState } from "../hooks/useUndoRedoState";
 import { createRequiredContext } from "./createRequiredContext";
-import { useFeedback } from "./FeedbackProvider";
+import { useFeedbackActions } from "./FeedbackProvider";
 import { useWorkspace } from "./WorkspaceProvider";
 
 type UndoRedoContextValue = ReturnType<typeof useUndoRedoState>;
@@ -11,7 +11,7 @@ const [UndoRedoContext, useUndoRedo] = createRequiredContext<UndoRedoContextValu
 export { useUndoRedo };
 
 export function UndoRedoProvider({ children }: { children: ReactNode }) {
-  const feedback = useFeedback();
+  const feedback = useFeedbackActions();
   const workspace = useWorkspace();
   const undoRedo = useUndoRedoState({
     scopeKey: workspace.selectedProject?.rootPath ?? null,

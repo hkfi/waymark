@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
-import { useFeedback } from "./FeedbackProvider";
+import { useFeedbackActions } from "./FeedbackProvider";
 import { useFilters } from "./FilterProvider";
 import { useLayout } from "./LayoutProvider";
 import { useModals } from "./ModalProvider";
@@ -11,7 +11,7 @@ import { useUndoRedo } from "./UndoRedoProvider";
 import { useWorkspace } from "./WorkspaceProvider";
 
 export function KeyboardShortcutsProvider({ children }: { children: ReactNode }) {
-  const feedback = useFeedback();
+  const feedback = useFeedbackActions();
   const filters = useFilters();
   const layout = useLayout();
   const modals = useModals();

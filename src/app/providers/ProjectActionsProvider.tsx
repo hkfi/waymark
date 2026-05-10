@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import { useProjectActions as useProjectActionsState } from "../hooks/useProjectActions";
 import { createRequiredContext } from "./createRequiredContext";
-import { useFeedback } from "./FeedbackProvider";
-import { useModals } from "./ModalProvider";
+import { useFeedbackActions } from "./FeedbackProvider";
+import { useModalActions } from "./ModalProvider";
 import { useSelection } from "./SelectionProvider";
 import { useUndoRedo } from "./UndoRedoProvider";
 import { useWorkspace } from "./WorkspaceProvider";
@@ -15,8 +15,8 @@ const [ProjectActionsContext, useProjectActions] =
 export { useProjectActions };
 
 export function ProjectActionsProvider({ children }: { children: ReactNode }) {
-  const feedback = useFeedback();
-  const modals = useModals();
+  const feedback = useFeedbackActions();
+  const modals = useModalActions();
   const selection = useSelection();
   const undoRedo = useUndoRedo();
   const workspace = useWorkspace();

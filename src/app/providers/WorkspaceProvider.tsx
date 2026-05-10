@@ -2,8 +2,8 @@ import { useMemo, type ReactNode } from "react";
 import type { ProjectConfig } from "../../types";
 import { useWorkspaceState } from "../hooks/useWorkspaceState";
 import { createRequiredContext } from "./createRequiredContext";
-import { useFeedback } from "./FeedbackProvider";
-import { useModals } from "./ModalProvider";
+import { useFeedbackActions } from "./FeedbackProvider";
+import { useModalActions } from "./ModalProvider";
 
 type WorkspaceContextValue = ReturnType<typeof useWorkspaceState>;
 
@@ -12,8 +12,8 @@ const [WorkspaceContext, useWorkspace] = createRequiredContext<WorkspaceContextV
 export { useWorkspace };
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
-  const feedback = useFeedback();
-  const modals = useModals();
+  const feedback = useFeedbackActions();
+  const modals = useModalActions();
   const workspaceState = useWorkspaceState(feedback);
 
   const workspace = useMemo<WorkspaceContextValue>(
