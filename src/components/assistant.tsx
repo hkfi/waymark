@@ -26,6 +26,7 @@ import {
 } from "../workspace";
 import { lines, recordId } from "../app/model";
 import type { RecordTransaction } from "../app/hooks/useUndoRedoState";
+import { MarkdownView, type MarkdownDisplayMode } from "./markdown";
 import { Btn, Card, Notice, cx } from "./primitives";
 
 type AssistantModelChoice = "latest" | "gpt-5.5" | "gpt-5.4" | "gpt-5.4-mini";
@@ -820,6 +821,9 @@ function StatusPill({ status, route, compact = false }: { status: CodexStatus; r
 function ChatMessage({ message, streaming }: { message: AssistantMessage; streaming: boolean }) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
+  const [mode, setMode] = useState<MarkdownDisplayMode>("preview");
+  const content = message.content || (streaming ? "Thinking" : "");
+
   return (
     <div className={cx("assistant-message-row", isUser ? "user" : isSystem ? "system" : "assistant")}>
       {!isUser ? (
@@ -832,9 +836,23 @@ function ChatMessage({ message, streaming }: { message: AssistantMessage; stream
           <span>{message.role}</span>
           <span>·</span>
           <span>{message.route}</span>
+          <span className="flex-1" />
+          <button
+            type="button"
+            onClick={() => setMode(mode === "preview" ? "source" : "preview")}
+            className="rounded-[3px] px-1 py-0.5 normal-case tracking-normal text-ink-faint hover:bg-surface-3 hover:text-ink"
+          >
+            {mode === "preview" ? "Source" : "Rendered"}
+          </button>
         </div>
-        <div className="whitespace-pre-wrap text-[13px] leading-[1.55] text-ink-soft">
-          {message.content || (streaming ? "Thinking" : "")}
+        <div className="min-w-0 text-[13px] leading-[1.55] text-ink-soft">
+          {mode === "preview" ? (
+            <MarkdownView source={content} compact className="text-[13px]" />
+          ) : (
+            <pre className="m-0 whitespace-pre-wrap font-mono text-[11.5px] leading-[1.55] text-ink-soft">
+              {content}
+            </pre>
+          )}
           {streaming ? <span className="assistant-stream-caret" /> : null}
         </div>
       </div>

@@ -3,6 +3,7 @@ import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { LinkRecord, Priority, ProjectConfig, ProjectStage, ProjectStatus, RepoRef, ThreadRecord, Ticket, TicketStatus, WaymarkProject, WorkspaceData } from "../types";
 import { lines, recordId, type CaptureKind, type CapturePayload, type FileModalMode } from "../app/model";
 import { buildRepoInstructionDrafts, missingProjectScaffold, type ProjectScaffoldItem, type RepoInstructionDraft } from "../workspace";
+import { MarkdownBlock } from "./markdown";
 import { Btn, CommandShortcutBadge, cx, Notice } from "./primitives";
 
 export function EmptyState({
@@ -586,9 +587,15 @@ export function RepoOnboardingModal({
                           {compactPath(draft.path)}
                         </span>
                       </div>
-                      <pre className="m-0 max-h-[132px] overflow-auto whitespace-pre-wrap rounded-[3px] border border-line-soft bg-surface-2 p-2 text-[10.5px] leading-[1.45] text-ink-faint font-mono">
-{draft.contents}
-                      </pre>
+                      <MarkdownBlock
+                        value={draft.contents}
+                        label="AGENTS.md"
+                        defaultMode="source"
+                        compact
+                        className="max-h-[172px] rounded-[3px] bg-surface-2"
+                        contentClassName="max-h-[132px] overflow-auto"
+                        sourceClassName="text-[10.5px] leading-[1.45] text-ink-faint"
+                      />
                     </div>
                   );
                 })}

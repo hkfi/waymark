@@ -8,6 +8,7 @@ import { activeLane, projectFile, resolveProjectPath, tokenEstimate, type Inspec
 import { buildNoteRecommendationPrompt, buildTicketRecommendationPrompt, type AssistantLaunchInput, type AssistantLaunchRequest } from "../assistant";
 import type { RecordTransaction } from "../app/hooks/useUndoRedoState";
 import { AssistantView } from "./assistant";
+import { MarkdownBlock } from "./markdown";
 import { Btn, Card, Cell, CommandShortcutBadge, DataRow, EmptyRow, StatusChip, cx } from "./primitives";
 
 export function Inspector({
@@ -494,15 +495,13 @@ function InspectorTicket({
             />
           }
         >
-          <div className="text-[12.5px] text-ink-soft leading-[1.55]">
-            {ticket.summary ? (
-              ticket.summary
-            ) : (
-              <span className="text-ink-mute">
-                No summary written yet. Add one to this ticket in <code>tickets.yaml</code>.
-              </span>
-            )}
-          </div>
+          {ticket.summary ? (
+            <MarkdownBlock value={ticket.summary} label="summary.md" compact />
+          ) : (
+            <div className="text-[12.5px] text-ink-mute leading-[1.55]">
+              No summary written yet. Add one to this ticket in <code>tickets.yaml</code>.
+            </div>
+          )}
         </InspectorSection>
 
         <InspectorSection
@@ -779,21 +778,21 @@ function InspectorPrompt({
         </InspectorSection>
 
         <InspectorSection label={<></>} className="mb-0 flex min-h-0 flex-col">
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[5px] border border-line bg-surface-input-2">
-            <div className="flex items-center gap-2 px-2.5 py-1.5 border-b border-line-soft bg-surface-3">
-              <span className="font-mono text-[10px] text-ink-faint uppercase tracking-[0.06em]">prompt.md</span>
-              <span className="flex-1" />
+          <MarkdownBlock
+            value={prompt}
+            label="prompt.md"
+            className="min-h-0 flex-1"
+            contentClassName="min-h-0 flex-1 overflow-y-auto"
+            sourceClassName="text-[11px]"
+            actions={
               <button
                 onClick={() => navigator.clipboard?.writeText(prompt).catch(() => undefined)}
                 className="inline-flex items-center gap-1 px-1 py-0.5 text-ink-faint rounded-[3px] text-[11px] hover:bg-surface-3 hover:text-ink cursor-pointer"
               >
                 <Copy size={11} /> Copy
               </button>
-            </div>
-            <pre className="m-0 min-h-0 flex-1 overflow-y-auto px-3 py-2.5 font-mono text-[11px] text-ink-soft whitespace-pre-wrap leading-[1.55]">
-              {prompt}
-            </pre>
-          </div>
+            }
+          />
         </InspectorSection>
 
         <InspectorSection label="Order" className="mb-0">
@@ -968,7 +967,7 @@ function InspectorNote({
             />
           }
         >
-          <div className="text-[12.5px] text-ink-soft leading-[1.55] whitespace-pre-wrap">{note.body || "No body."}</div>
+          <MarkdownBlock value={note.body} label={`${note.type}.md`} empty="No body." />
         </InspectorSection>
         <InspectorSection label="Linked tickets">
           <Card>
