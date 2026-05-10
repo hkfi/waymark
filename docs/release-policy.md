@@ -50,8 +50,8 @@ Required repository secrets:
 
 Only the public updater key is committed in `src-tauri/tauri.conf.json`. Never commit the private key.
 
-For local signed bundle verification, set the key path or content before building:
+For local signed bundle verification, set the private key content before building:
 
 ```bash
-TAURI_SIGNING_PRIVATE_KEY=/path/to/waymark-updater.key TAURI_SIGNING_PRIVATE_KEY_PASSWORD= pnpm tauri build --debug
+TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/waymark-updater.key)" TAURI_SIGNING_PRIVATE_KEY_PASSWORD= pnpm tauri build --debug
 ```
