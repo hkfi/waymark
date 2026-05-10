@@ -1,5 +1,6 @@
-import { AlertTriangle, Check, Info, Plus, X } from "lucide-react";
-import type { ReactNode } from "react";
+import { Plus } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { toast } from "sonner";
 import { isTauri, openPath } from "../tauri";
 import {
   CaptureModal,
@@ -11,8 +12,9 @@ import {
   TicketEditModal,
 } from "../components/modals";
 import { Inspector } from "../components/inspector";
-import { Btn, cx, WaymarkMark } from "../components/primitives";
+import { Btn, WaymarkMark } from "../components/primitives";
 import { MainHeader, PaneResizeHandle, Sidebar, WorkspaceToolbar } from "../components/shell";
+import { Toaster } from "../components/ui/sonner";
 import { CockpitContent } from "../components/views";
 import {
   useFeedback,
@@ -29,6 +31,10 @@ import {
 } from "./AppProvider";
 import { useAppUpdates } from "./hooks/useAppUpdates";
 import { useCommandKeyHint } from "./hooks/useCommandKeyHint";
+
+const NOTICE_TOAST_ID = "feedback-notice";
+const ERROR_TOAST_ID = "feedback-error";
+const TAURI_REQUIRED_TOAST_ID = "tauri-required";
 
 export function AppShell() {
   const layout = useLayout();
@@ -253,66 +259,83 @@ function MainContentRegion() {
 
 function FeedbackToasts() {
   const feedback = useFeedback();
+  const latestNotice = useRef(feedback.notice);
+  const latestError = useRef(feedback.error);
 
-  return (
-    <div className="toast-region" aria-live="polite" aria-atomic="true">
-      {feedback.notice ? (
-        <Toast
-          tone="ok"
-          action={feedback.noticeAction ?? undefined}
-          onClose={() => feedback.setNotice(null)}
-        >
-          {feedback.notice}
-        </Toast>
-      ) : null}
-      {feedback.error ? (
-        <Toast tone="err" onClose={() => feedback.setError(null)}>
-          {feedback.error}
-        </Toast>
-      ) : null}
-      {!isTauri() ? (
-        <Toast tone="warn" onClose={undefined}>
-          Run with <code>pnpm tauri dev</code> to load and write the local Markdown/YAML workspace.
-        </Toast>
-      ) : null}
-    </div>
-  );
-}
+  useEffect(() => {
+    latestNotice.current = feedback.notice;
+  }, [feedback.notice]);
 
-function Toast({
-  tone,
-  action,
-  onClose,
-  children,
-}: {
-  tone: "ok" | "warn" | "err";
-  action?: { label: string; onClick: () => void };
-  onClose?: () => void;
-  children: ReactNode;
-}) {
-  const Icon = tone === "ok" ? Check : tone === "warn" ? Info : AlertTriangle;
-  const toneClass = {
-    ok: "toast-ok",
-    warn: "toast-warn",
-    err: "toast-err",
-  }[tone];
+  useEffect(() => {
+    latestError.current = feedback.error;
+  }, [feedback.error]);
 
-  return (
-    <div className={cx("toast", toneClass)} role={tone === "err" ? "alert" : "status"}>
-      <Icon size={14} className="toast-icon" />
-      <div className="toast-body">{children}</div>
-      {action ? (
-        <button type="button" className="toast-action" data-testid="toast-action" onClick={action.onClick}>
-          {action.label}
-        </button>
-      ) : null}
-      {onClose ? (
-        <button type="button" className="toast-close" onClick={onClose} aria-label="Dismiss notification">
-          <X size={13} />
-        </button>
-      ) : null}
-    </div>
-  );
+  useEffect(() => {
+    if (!feedback.notice) {
+      toast.dismiss(NOTICE_TOAST_ID);
+      return;
+    }
+
+    const notice = feedback.notice;
+
+    toast.success(notice, {
+      id: NOTICE_TOAST_ID,
+      duration: feedback.noticeAction ? 7000 : 4500,
+      action: feedback.noticeAction
+        ? {
+            label: <span data-testid="toast-action">{feedback.noticeAction.label}</span>,
+            onClick: () => feedback.noticeAction?.onClick(),
+          }
+        : undefined,
+      onDismiss: () => {
+        if (latestNotice.current === notice) feedback.setNotice(null);
+      },
+      onAutoClose: () => {
+        if (latestNotice.current === notice) feedback.setNotice(null);
+      },
+    });
+  }, [feedback.notice, feedback.noticeAction, feedback.setNotice]);
+
+  useEffect(() => {
+    if (!feedback.error) {
+      toast.dismiss(ERROR_TOAST_ID);
+      return;
+    }
+
+    const error = feedback.error;
+
+    toast.error(error, {
+      id: ERROR_TOAST_ID,
+      duration: 9000,
+      onDismiss: () => {
+        if (latestError.current === error) feedback.setError(null);
+      },
+      onAutoClose: () => {
+        if (latestError.current === error) feedback.setError(null);
+      },
+    });
+  }, [feedback.error, feedback.setError]);
+
+  useEffect(() => {
+    if (isTauri()) {
+      toast.dismiss(TAURI_REQUIRED_TOAST_ID);
+      return;
+    }
+
+    toast.warning(
+      <>
+        Run with <code>pnpm tauri dev</code> to load and write the local Markdown/YAML workspace.
+      </>,
+      {
+        id: TAURI_REQUIRED_TOAST_ID,
+        duration: Number.POSITIVE_INFINITY,
+        closeButton: false,
+        dismissible: false,
+      },
+    );
+  }, []);
+
+  return <Toaster />;
 }
 
 function NoProjectState({ onCreateProject }: { onCreateProject: () => void }) {
