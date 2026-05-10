@@ -25,6 +25,10 @@ projects/
 
 The directory name under `projects/` should match `project.yaml.slug`.
 
+Opening an existing workspace means selecting the folder that contains `waymark.yaml`. Creating a
+new workspace through the app means selecting a parent folder; Waymark creates one named child folder
+there before writing `waymark.yaml` and `projects/`.
+
 ## `waymark.yaml`
 
 Workspace metadata. `projects_dir` defaults to `projects`.

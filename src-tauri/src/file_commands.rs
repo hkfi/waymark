@@ -77,13 +77,17 @@ pub(crate) fn open_path(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub(crate) async fn choose_directory(app: tauri::AppHandle) -> Result<Option<String>, String> {
+pub(crate) async fn choose_directory(
+    app: tauri::AppHandle,
+    title: Option<String>,
+) -> Result<Option<String>, String> {
     #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
     {
         tauri::async_runtime::spawn_blocking(move || {
+            let title = title.unwrap_or_else(|| "Open Waymark workspace".to_string());
             app.dialog()
                 .file()
-                .set_title("Open Waymark workspace")
+                .set_title(&title)
                 .blocking_pick_folder()
                 .map(|path| {
                     path.into_path()

@@ -213,8 +213,8 @@ export function Sidebar({
           <button
             onClick={onChooseWorkspace}
             className="w-[18px] h-[18px] grid place-items-center rounded-[3px] text-ink-faint hover:bg-surface-4 hover:text-ink"
-            aria-label="Choose workspace folder"
-            title="Choose workspace folder"
+            aria-label="Open existing Waymark workspace folder"
+            title="Open existing Waymark workspace folder"
           >
             <FolderOpen size={12} />
           </button>
@@ -231,7 +231,7 @@ export function Sidebar({
           <SidebarChipButton onClick={onRefresh}>
             <RefreshCw size={11} /> Reload
           </SidebarChipButton>
-          <SidebarChipButton onClick={onCreateWorkspace} title="Create a workspace in a separate folder">
+          <SidebarChipButton onClick={onCreateWorkspace} title="Create a new workspace folder inside a parent folder">
             <Plus size={11} /> New…
           </SidebarChipButton>
           <SidebarChipButton onClick={onSeed}>

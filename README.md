@@ -60,6 +60,10 @@ WaymarkWorkspace/
         thread-summaries/
 ```
 
+When opening an existing workspace, choose the workspace folder itself, the folder that contains
+`waymark.yaml`. When creating a new workspace from the app, choose a parent location such as
+`~/Documents`; Waymark creates a named child folder there and writes the workspace files inside it.
+
 On first launch, the app can create a sample workspace at:
 
 ```txt

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { chooseDirectory, isTauri, pathExists } from "../../tauri";
+import { chooseDirectory as chooseDirectoryNative, isTauri, pathExists } from "../../tauri";
 import type { ProjectConfig, WaymarkProject, WorkspaceData } from "../../types";
 import {
   buildDemoWorkspace,
@@ -94,7 +94,7 @@ export function useWorkspaceState({ setError, setNotice }: FeedbackApi) {
     }
 
     try {
-      const path = await chooseDirectory();
+      const path = await chooseDirectoryNative("Open existing Waymark workspace folder");
       if (!path) return;
       setRootPath(path);
       setSelectedSlug(storedSelectedSlug(path));
@@ -196,7 +196,7 @@ export function useWorkspaceState({ setError, setNotice }: FeedbackApi) {
       selectedProject,
       selectProject: setSelectedSlug,
       refresh,
-      chooseDirectory,
+      chooseDirectory: chooseDirectoryNative,
       chooseWorkspace,
       seedWorkspace,
       createWorkspace,

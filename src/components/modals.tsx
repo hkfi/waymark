@@ -1,8 +1,8 @@
-import { AlertTriangle, Check, FileText, FolderOpen, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { AlertTriangle, Check, FileText, FolderOpen, FolderPlus, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { LinkRecord, Priority, ProjectConfig, ProjectStage, ProjectStatus, RepoRef, ThreadRecord, Ticket, TicketStatus, WaymarkProject, WorkspaceData } from "../types";
 import { lines, recordId, type CaptureKind, type CapturePayload, type FileModalMode } from "../app/model";
-import { buildRepoInstructionDrafts, missingProjectScaffold, type ProjectScaffoldItem, type RepoInstructionDraft } from "../workspace";
+import { buildRepoInstructionDrafts, joinPath, missingProjectScaffold, type ProjectScaffoldItem, type RepoInstructionDraft } from "../workspace";
 import { MarkdownBlock } from "./markdown";
 import { Btn, CommandShortcutBadge, cx, Notice, WaymarkMark } from "./primitives";
 
@@ -28,8 +28,8 @@ export function EmptyState({
       <WaymarkMark size="lg" />
       <h2 className="m-0 text-[18px] font-semibold tracking-[-0.01em] text-ink">Open a workspace</h2>
       <p className="m-0 max-w-[460px] text-[13px] leading-[1.55]">
-        Choose a folder with <code>waymark.yaml</code> and per-project Markdown/YAML. Point at an existing workspace,
-        or create a sample to explore the cockpit.
+        Open the folder that already contains <code>waymark.yaml</code>, or create a new workspace folder inside
+        a location you choose.
       </p>
       <div className="flex items-center gap-2 h-[26px] px-2 rounded-[3px] bg-surface-2 border border-line w-[420px] max-w-full font-mono text-[11px] text-ink-soft">
         <span className="w-1.5 h-1.5 rounded-full bg-ink-mute shrink-0" />
@@ -40,15 +40,15 @@ export function EmptyState({
           className="flex-1 min-w-0 bg-transparent border-0 outline-0 p-0"
         />
       </div>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap justify-center gap-2">
         <Btn onClick={onChooseWorkspace} disabled={!tauri}>
-          <FolderOpen size={13} /> Browse
+          <FolderOpen size={13} /> Open existing
         </Btn>
         <Btn onClick={onCreateWorkspace} disabled={!tauri}>
-          <Plus size={13} /> New workspace
+          <FolderPlus size={13} /> New workspace
         </Btn>
         <Btn onClick={onRefresh}>
-          <RefreshCw size={13} /> Open
+          <RefreshCw size={13} /> Open path
         </Btn>
         <Btn variant="primary" onClick={onSeed} disabled={!tauri}>
           <Sparkles size={11} /> Create sample
@@ -66,40 +66,62 @@ export function CreateWorkspaceModal({
 }: {
   tauri: boolean;
   onClose: () => void;
-  onChooseWorkspace: () => Promise<string | null>;
+  onChooseWorkspace: (title?: string) => Promise<string | null>;
   onCreate: (path: string, name: string) => Promise<void>;
 }) {
   const [name, setName] = useState("Waymark Workspace");
-  const [path, setPath] = useState("");
+  const [parentPath, setParentPath] = useState("~/Documents");
+  const [folderName, setFolderName] = useState("Waymark Workspace");
+  const [folderNameEdited, setFolderNameEdited] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const destinationPath =
+    parentPath.trim() && folderName.trim()
+      ? joinPath(trimPath(parentPath), folderName.trim())
+      : "";
+
+  function updateName(value: string) {
+    setName(value);
+    if (!folderNameEdited) {
+      setFolderName(workspaceFolderName(value));
+    }
+  }
 
   async function chooseDestination() {
     setError(null);
     try {
-      const selected = await onChooseWorkspace();
-      if (selected) setPath(selected);
+      const selected = await onChooseWorkspace("Choose where to create the Waymark workspace folder");
+      if (selected) setParentPath(selected);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
   }
 
   return (
-    <ModalFrame title="Create workspace" onClose={onClose}>
+    <ModalFrame title="Create new workspace" onClose={onClose}>
       <form
         onKeyDown={submitOnCommandEnter}
         onSubmit={async (event) => {
           event.preventDefault();
-          const cleanPath = path.trim();
+          const cleanParentPath = trimPath(parentPath);
+          const cleanFolderName = folderName.trim();
           const cleanName = name.trim() || "Waymark Workspace";
-          if (!cleanPath) {
-            setError("Choose or enter a destination folder.");
+          if (!cleanParentPath) {
+            setError("Choose or enter the parent folder.");
+            return;
+          }
+          if (!cleanFolderName) {
+            setError("Enter a workspace folder name.");
+            return;
+          }
+          if (hasPathSeparator(cleanFolderName) || cleanFolderName === "." || cleanFolderName === "..") {
+            setError("Workspace folder name must be one folder, not a path.");
             return;
           }
           setBusy(true);
           setError(null);
           try {
-            await onCreate(cleanPath, cleanName);
+            await onCreate(joinPath(cleanParentPath, cleanFolderName), cleanName);
           } catch (caught) {
             setError(caught instanceof Error ? caught.message : String(caught));
           } finally {
@@ -109,24 +131,24 @@ export function CreateWorkspaceModal({
         className="flex flex-col gap-3"
       >
         <p className="m-0 text-[12.5px] leading-[1.55] text-ink-faint">
-          Creation uses this destination only. The current workspace path is for opening and reloading existing workspaces.
+          Choose a parent folder. Waymark creates one new folder inside it and writes <code>waymark.yaml</code> there.
         </p>
         <div>
-          <FieldLabel>Name</FieldLabel>
+          <FieldLabel>Workspace name</FieldLabel>
           <input
             value={name}
-            onChange={(event) => setName(event.target.value)}
+            onChange={(event) => updateName(event.target.value)}
             className={cx(inputClass, "mt-1")}
             autoFocus
           />
         </div>
         <div>
-          <FieldLabel>Destination folder</FieldLabel>
+          <FieldLabel>Parent folder</FieldLabel>
           <div className="grid grid-cols-[1fr_auto] gap-2 mt-1">
             <input
-              value={path}
-              onChange={(event) => setPath(event.target.value)}
-              placeholder="/path/to/empty-folder"
+              value={parentPath}
+              onChange={(event) => setParentPath(event.target.value)}
+              placeholder="~/Documents"
               spellCheck={false}
               className={inputClass}
             />
@@ -134,6 +156,25 @@ export function CreateWorkspaceModal({
               <FolderOpen size={13} /> Browse
             </Btn>
           </div>
+        </div>
+        <div>
+          <FieldLabel>New folder name</FieldLabel>
+          <input
+            value={folderName}
+            onChange={(event) => {
+              setFolderNameEdited(true);
+              setFolderName(event.target.value);
+            }}
+            placeholder="Waymark Workspace"
+            spellCheck={false}
+            className={cx(inputClass, "mt-1")}
+          />
+        </div>
+        <div className="rounded-[5px] border border-line-soft bg-surface-3 px-3 py-2">
+          <div className="text-[10px] uppercase tracking-[0.10em] text-ink-mute font-semibold">Will create</div>
+          <code className="mt-1 block break-all text-[11.5px] leading-[1.45] text-ink-soft">
+            {destinationPath || "Choose a parent folder and folder name."}
+          </code>
         </div>
         {!tauri ? (
           <Notice tone="warn">
@@ -143,8 +184,8 @@ export function CreateWorkspaceModal({
         {error ? <Notice tone="err"><AlertTriangle size={13} /> {error}</Notice> : null}
         <div className="flex gap-2 justify-end">
           <Btn type="button" variant="ghost" onClick={onClose}>Cancel</Btn>
-          <Btn type="submit" variant="primary" disabled={!tauri || busy || !path.trim()}>
-            <Plus size={11} /> Create workspace
+          <Btn type="submit" variant="primary" disabled={!tauri || busy || !parentPath.trim() || !folderName.trim()}>
+            <FolderPlus size={11} /> Create workspace
           </Btn>
         </div>
       </form>
@@ -653,7 +694,19 @@ function submitOnCommandEnter(event: KeyboardEvent<HTMLFormElement>) {
 }
 
 function trimPath(path: string) {
-  return path.trim().replace(/\/+$/, "");
+  const clean = path.trim();
+  if (clean === "/") return clean;
+  return clean.replace(/\/+$/, "");
+}
+
+function workspaceFolderName(name: string) {
+  return (name.trim() || "Waymark Workspace")
+    .replace(/[\\/:]+/g, "-")
+    .replace(/\s+/g, " ");
+}
+
+function hasPathSeparator(value: string) {
+  return value.includes("/") || value.includes("\\");
 }
 
 function titleFromPath(path: string) {

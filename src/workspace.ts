@@ -715,6 +715,9 @@ export async function createWorkspace(rootPath: string, name = "Waymark Workspac
   if (await pathExists(configPath)) {
     throw new Error(`Workspace already exists at ${configPath}`);
   }
+  if (await pathExists(rootPath)) {
+    throw new Error(`Choose a new folder name. ${rootPath} already exists and is not a Waymark workspace.`);
+  }
   await createDirAll(joinPath(rootPath, "projects"));
   await writeTextFile(
     configPath,
