@@ -7,6 +7,7 @@ import {
   type TransactionNotice,
 } from "../history";
 import type { FeedbackNoticeAction } from "./useFeedbackState";
+import type { WorkspaceRefreshOptions } from "./useWorkspaceState";
 
 export type { HistoryEntry, HistoryFile, TransactionNotice };
 
@@ -19,7 +20,7 @@ export type RecordTransaction = <T>(
 
 type UndoRedoDeps = {
   scopeKey: string | null;
-  refresh: () => Promise<void>;
+  refresh: (path?: string, options?: WorkspaceRefreshOptions) => Promise<void>;
   setError: (value: string | null) => void;
   setNotice: (value: string | null) => void;
   setActionNotice: (value: string, action: FeedbackNoticeAction | null) => void;
@@ -61,7 +62,7 @@ export function useUndoRedoState({
       try {
         await controller.undo(entry);
         updateStacks();
-        await refresh();
+        await refresh(undefined, { notify: false });
         setActionNotice(`Undid ${entry.label}.`, {
           label: "Redo",
           onClick: () => {
@@ -80,7 +81,7 @@ export function useUndoRedoState({
       try {
         await controller.redo(entry);
         updateStacks();
-        await refresh();
+        await refresh(undefined, { notify: false });
         setActionNotice(`Redid ${entry.label}.`, {
           label: "Undo",
           onClick: () => {

@@ -16,6 +16,10 @@ type FeedbackApi = {
   setNotice: (value: string | null) => void;
 };
 
+export type WorkspaceRefreshOptions = {
+  notify?: boolean;
+};
+
 function storedWorkspacePath() {
   if (typeof window === "undefined") return defaultWorkspacePath;
   return window.localStorage.getItem(LAST_WORKSPACE_PATH_KEY) || defaultWorkspacePath;
@@ -50,16 +54,17 @@ export function useWorkspaceState({ setError, setNotice }: FeedbackApi) {
   }, [data, selectedSlug]);
 
   const refresh = useCallback(
-    async (path = rootPath) => {
+    async (path = rootPath, options: WorkspaceRefreshOptions = {}) => {
+      const shouldNotify = options.notify !== false;
       setError(null);
       try {
         if (!isTauri()) {
           if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1") {
             setData(buildDemoWorkspace());
-            setNotice("Reloaded demo workspace.");
+            if (shouldNotify) setNotice("Reloaded demo workspace.");
             return;
           }
-          setNotice("Run Waymark through Tauri to reload a local workspace.");
+          if (shouldNotify) setNotice("Run Waymark through Tauri to reload a local workspace.");
           return;
         }
 
@@ -74,7 +79,7 @@ export function useWorkspaceState({ setError, setNotice }: FeedbackApi) {
           if (candidate && next.projects.some((project) => project.config.slug === candidate)) return candidate;
           return next.projects[0]?.config.slug ?? null;
         });
-        setNotice(`Reloaded ${next.config.name}.`);
+        if (shouldNotify) setNotice(`Reloaded ${next.config.name}.`);
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
@@ -108,7 +113,7 @@ export function useWorkspaceState({ setError, setNotice }: FeedbackApi) {
       await createSampleWorkspace(rootPath);
       setRootPath(rootPath);
       setNotice(`Created sample workspace at ${rootPath}.`);
-      await refresh(rootPath);
+      await refresh(rootPath, { notify: false });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }

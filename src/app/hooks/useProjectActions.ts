@@ -19,6 +19,7 @@ import {
 import type { RepoInstructionDraft } from "../../workspace";
 import { LANE_LABEL, lines, recordId, type CapturePayload, type InspectorMode, type Lane } from "../model";
 import type { RecordTransaction } from "./useUndoRedoState";
+import type { WorkspaceRefreshOptions } from "./useWorkspaceState";
 
 type ProjectActionDeps = {
   project: WaymarkProject | null;
@@ -26,7 +27,7 @@ type ProjectActionDeps = {
   multi: string[];
   inspectorMode: InspectorMode;
   setInspectorMode: (mode: InspectorMode) => void;
-  refresh: () => Promise<void>;
+  refresh: (path?: string, options?: WorkspaceRefreshOptions) => Promise<void>;
   clearEditingTicket: () => void;
   closeCapture: () => void;
   closeFileModal: () => void;
@@ -135,7 +136,7 @@ export function useProjectActions({
       } catch {
         /* clipboard not always available */
       }
-      await refresh();
+      await refresh(undefined, { notify: false });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
@@ -162,7 +163,7 @@ export function useProjectActions({
             ),
           `Moved ${ticket.title} to ${LANE_LABEL[status as Lane] ?? status}.`,
         );
-        await refresh();
+        await refresh(undefined, { notify: false });
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
@@ -190,7 +191,7 @@ export function useProjectActions({
           `Updated ${ticket.title}.`,
         );
         clearEditingTicket();
-        await refresh();
+        await refresh(undefined, { notify: false });
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
@@ -214,7 +215,7 @@ export function useProjectActions({
           `Deleted ${ticket.title}.`,
         );
         clearEditingTicket();
-        await refresh();
+        await refresh(undefined, { notify: false });
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
@@ -248,7 +249,7 @@ export function useProjectActions({
             ),
           `Removed prompt reference from ${ticket.title}. Prompt file was not deleted.`,
         );
-        await refresh();
+        await refresh(undefined, { notify: false });
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
@@ -317,7 +318,7 @@ export function useProjectActions({
         }
 
         closeCapture();
-        await refresh();
+        await refresh(undefined, { notify: false });
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
@@ -351,7 +352,7 @@ export function useProjectActions({
           `Linked ${cleanPath}.`,
         );
         closeFileModal();
-        await refresh();
+        await refresh(undefined, { notify: false });
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
@@ -375,7 +376,7 @@ export function useProjectActions({
           `Added ${link.label}.`,
         );
         closeFileModal();
-        await refresh();
+        await refresh(undefined, { notify: false });
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
@@ -402,7 +403,7 @@ export function useProjectActions({
             ),
           `Updated ${link.label}.`,
         );
-        await refresh();
+        await refresh(undefined, { notify: false });
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
@@ -453,7 +454,7 @@ export function useProjectActions({
           setError("This context row cannot be removed from Waymark yet.");
           return;
         }
-        await refresh();
+        await refresh(undefined, { notify: false });
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
@@ -485,7 +486,7 @@ export function useProjectActions({
           },
           `Deleted thread reference ${thread.title}. Summary file was not deleted.`,
         );
-        await refresh();
+        await refresh(undefined, { notify: false });
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
@@ -522,7 +523,7 @@ export function useProjectActions({
           },
           `Deleted ${note.type} ${note.title}.`,
         );
-        await refresh();
+        await refresh(undefined, { notify: false });
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
@@ -548,7 +549,7 @@ export function useProjectActions({
           : "";
         setNotice(`Onboarded ${saved.repos.length} repo${saved.repos.length === 1 ? "" : "s"}.${scaffoldText}${repoFileText}`);
         closeRepoOnboarding();
-        await refresh();
+        await refresh(undefined, { notify: false });
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
         throw caught;

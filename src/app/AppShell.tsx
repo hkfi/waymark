@@ -408,7 +408,7 @@ function InspectorRegion() {
           include_in_handoff: !included,
         })
       }
-      onSaved={() => workspace.refresh()}
+      onSaved={() => workspace.refresh(undefined, { notify: false })}
       assistantLaunchRequest={selection.assistantLaunchRequest}
       onAssistantLaunchConsumed={selection.clearAssistantLaunchRequest}
       onAskAssistant={selection.openAssistant}
