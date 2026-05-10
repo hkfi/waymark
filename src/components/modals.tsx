@@ -1,10 +1,10 @@
-import { AlertTriangle, Check, FileText, FolderOpen, Plus, RefreshCw, Sparkles, Trash2, Triangle } from "lucide-react";
+import { AlertTriangle, Check, FileText, FolderOpen, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { LinkRecord, Priority, ProjectConfig, ProjectStage, ProjectStatus, RepoRef, ThreadRecord, Ticket, TicketStatus, WaymarkProject, WorkspaceData } from "../types";
 import { lines, recordId, type CaptureKind, type CapturePayload, type FileModalMode } from "../app/model";
 import { buildRepoInstructionDrafts, missingProjectScaffold, type ProjectScaffoldItem, type RepoInstructionDraft } from "../workspace";
 import { MarkdownBlock } from "./markdown";
-import { Btn, CommandShortcutBadge, cx, Notice } from "./primitives";
+import { Btn, CommandShortcutBadge, cx, Notice, WaymarkMark } from "./primitives";
 
 export function EmptyState({
   tauri,
@@ -25,11 +25,11 @@ export function EmptyState({
 }) {
   return (
     <div className="grid place-items-center gap-3.5 py-16 px-8 text-center text-ink-faint">
-      <Triangle size={28} className="text-accent" fill="currentColor" strokeWidth={0} />
-      <h2 className="m-0 text-[18px] font-semibold tracking-[-0.01em] text-ink">Open a Waymark workspace</h2>
+      <WaymarkMark size="lg" />
+      <h2 className="m-0 text-[18px] font-semibold tracking-[-0.01em] text-ink">Open a workspace</h2>
       <p className="m-0 max-w-[460px] text-[13px] leading-[1.55]">
-        Waymark reads <code>waymark.yaml</code> and per-project Markdown/YAML from a folder you choose. Point at an existing
-        workspace, or create a sample to explore the cockpit.
+        Choose a folder with <code>waymark.yaml</code> and per-project Markdown/YAML. Point at an existing workspace,
+        or create a sample to explore the cockpit.
       </p>
       <div className="flex items-center gap-2 h-[26px] px-2 rounded-[3px] bg-surface-2 border border-line w-[420px] max-w-full font-mono text-[11px] text-ink-soft">
         <span className="w-1.5 h-1.5 rounded-full bg-ink-mute shrink-0" />

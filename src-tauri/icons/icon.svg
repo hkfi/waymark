@@ -1,5 +1,29 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <rect width="1024" height="1024" rx="192" fill="#111412"/>
-  <path d="M208 248h128l82 346 105-346h106l106 346 82-346h128L796 776H670L576 472 482 776H356L208 248Z" fill="#d8f275"/>
-  <path d="M248 832h528" stroke="#e8e8df" stroke-width="54" stroke-linecap="round"/>
+  <defs>
+    <linearGradient id="bg" x1="216" y1="84" x2="808" y2="940" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#15191c"/>
+      <stop offset="1" stop-color="#0b0f11"/>
+    </linearGradient>
+    <linearGradient id="route" x1="178" y1="256" x2="846" y2="738" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffd36a"/>
+      <stop offset="1" stop-color="#e5a736"/>
+    </linearGradient>
+  </defs>
+  <rect x="64" y="64" width="896" height="896" rx="208" fill="url(#bg)"/>
+  <path
+    d="M198 276 L330 750 L512 472 L694 750 L826 276"
+    fill="none"
+    stroke="url(#route)"
+    stroke-width="104"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <circle cx="198" cy="276" r="94" fill="#62bdc9"/>
+  <circle cx="512" cy="276" r="94" fill="#686e72"/>
+  <circle cx="826" cy="276" r="94" fill="#62bdc9"/>
+  <circle cx="512" cy="500" r="94" fill="#f0b442"/>
+  <circle cx="198" cy="276" r="43" fill="#111619"/>
+  <circle cx="512" cy="276" r="43" fill="#111619"/>
+  <circle cx="826" cy="276" r="43" fill="#111619"/>
+  <circle cx="512" cy="500" r="43" fill="#111619"/>
 </svg>

@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, Info, Plus, Triangle, X } from "lucide-react";
+import { AlertTriangle, Check, Info, Plus, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { isTauri, openPath } from "../tauri";
 import {
@@ -11,7 +11,7 @@ import {
   TicketEditModal,
 } from "../components/modals";
 import { Inspector } from "../components/inspector";
-import { Btn, cx } from "../components/primitives";
+import { Btn, cx, WaymarkMark } from "../components/primitives";
 import { MainHeader, PaneResizeHandle, Sidebar, WorkspaceToolbar } from "../components/shell";
 import { CockpitContent } from "../components/views";
 import {
@@ -160,6 +160,7 @@ function MainHeaderRegion() {
       search={filters.search}
       onSearch={filters.setSearch}
       searchInputRef={filters.searchInputRef}
+      showGapsFilter={Boolean(selectedProject && ticketScopedView)}
       gapsOnly={filters.gapsOnly}
       onToggleGaps={filters.toggleGapsOnly}
       onCapture={() => {
@@ -317,7 +318,7 @@ function Toast({
 function NoProjectState({ onCreateProject }: { onCreateProject: () => void }) {
   return (
     <div className="grid place-items-center gap-3.5 py-16 px-8 text-center text-ink-faint">
-      <Triangle size={28} className="text-accent" />
+      <WaymarkMark size="lg" />
       <h2 className="m-0 text-[18px] font-semibold tracking-[-0.01em] text-ink">
         No projects in this workspace
       </h2>

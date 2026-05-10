@@ -1,9 +1,9 @@
-import { Bot, Download, FileText, FolderOpen, GitBranch, LayoutGrid, ListChecks, ListOrdered, Plus, RefreshCw, Search, Sliders, Sparkles, Triangle, type LucideIcon } from "lucide-react";
+import { Bot, Download, FileText, FolderOpen, GitBranch, LayoutGrid, ListChecks, ListOrdered, Plus, RefreshCw, Search, Sliders, Sparkles, type LucideIcon } from "lucide-react";
 import { useMemo, type ButtonHTMLAttributes, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import type { AppUpdateStatus, Ticket, WaymarkProject, WorkspaceData } from "../types";
 import { projectColor, projectMark, projectStatusKind, type NavId } from "../app/model";
 import { NAV_SHORTCUTS } from "../app/hooks/useKeyboardShortcuts";
-import { Btn, CommandShortcutBadge, cx } from "./primitives";
+import { Btn, CommandShortcutBadge, cx, LetterMark } from "./primitives";
 
 export function WorkspaceToolbar({
   workspace,
@@ -46,10 +46,7 @@ export function WorkspaceToolbar({
       className="app-toolbar grid items-center border-b border-line bg-surface-rail select-none min-w-0 overflow-hidden"
       style={style}
     >
-      <div data-tauri-drag-region className="app-toolbar-brand flex items-center gap-2 px-3.5 min-w-0">
-        <Triangle size={12} className="text-accent shrink-0" fill="currentColor" strokeWidth={0} />
-        <span className="text-[12px] font-semibold text-ink truncate">Waymark</span>
-      </div>
+      <div data-tauri-drag-region className="app-toolbar-brand min-w-0" aria-hidden="true" />
       <div data-tauri-drag-region className="app-toolbar-path flex items-center justify-center gap-2 font-mono text-[11px] text-ink-faint min-w-0 px-3 overflow-hidden">
         <span className="truncate min-w-0 text-ink-soft" title={rootPath}>{rootPath}</span>
         <span className="text-ink-mute shrink-0">/</span>
@@ -188,12 +185,6 @@ export function Sidebar({
 
   return (
     <aside className="sidebar-shell bg-surface-rail border-r border-line flex flex-col min-h-0">
-      <div className="flex items-center gap-2.5 px-3.5 pt-3.5 pb-3 border-b border-line-soft">
-        <Triangle size={14} className="text-accent shrink-0" fill="currentColor" strokeWidth={0} />
-        <span className="font-semibold text-[13.5px] tracking-[-0.01em]">Waymark</span>
-        <span className="ml-auto font-mono text-[10.5px] text-ink-mute">0.1.0</span>
-      </div>
-
       <div className="px-2.5 py-2.5 border-b border-line-soft whitespace-nowrap overflow-hidden">
         <div className="text-[10px] uppercase tracking-[0.09em] text-ink-mute mx-1 my-1 font-medium">
           Workspace
@@ -503,12 +494,12 @@ export function MainHeader({
     <>
       <div className="flex items-center gap-3.5 px-[18px] h-[46px] border-b border-line shrink-0 min-w-0 overflow-hidden">
         <h1 className="m-0 text-[14px] font-semibold tracking-[-0.005em] text-ink flex items-center gap-2.5 shrink-0 min-w-0 max-w-[40%]">
-          <span
-            className="shrink-0"
-            style={{ color: project ? projectColor(project.config.slug, 0) : "var(--color-accent)" }}
-          >
-            <Triangle size={13} fill="currentColor" strokeWidth={0} />
-          </span>
+          {project ? (
+            <LetterMark
+              value={projectMark(project.config.slug)}
+              style={{ background: projectColor(project.config.slug, 0) }}
+            />
+          ) : null}
           <span className="truncate">
             {project?.config.name ?? workspace?.config.name ?? "No project"}
           </span>

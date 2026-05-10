@@ -14,6 +14,69 @@ export function StatusChip({ status }: { status: TicketStatus }) {
   return <span className={cx("status-chip", status)}>{label}</span>;
 }
 
+export function LetterMark({
+  value,
+  size = "sm",
+  className,
+  style,
+}: {
+  value: string;
+  size?: "sm" | "lg";
+  className?: string;
+  style?: CSSProperties;
+}) {
+  const sizeClass = size === "lg" ? "w-8 h-8 rounded-[6px] text-[15px]" : "w-4 h-4 rounded-[3px] text-[9px]";
+
+  return (
+    <span
+      aria-hidden="true"
+      style={style}
+      className={cx(
+        sizeClass,
+        "grid place-items-center bg-accent text-[oklch(0.16_0.01_250)] font-bold font-mono tracking-[-0.04em] shrink-0",
+        className,
+      )}
+    >
+      {value}
+    </span>
+  );
+}
+
+export function WaymarkMark({
+  size = "sm",
+  className,
+}: {
+  size?: "sm" | "lg";
+  className?: string;
+}) {
+  const sizeClass = size === "lg" ? "w-8 h-8" : "w-4 h-4";
+
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 64 64"
+      className={cx(sizeClass, "shrink-0 overflow-visible", className)}
+      fill="none"
+    >
+      <path
+        d="M12 15 L21 49 L32 31 L43 49 L52 15"
+        stroke="var(--color-accent)"
+        strokeWidth="8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="15" r="8" fill="var(--color-ai)" />
+      <circle cx="32" cy="15" r="8" fill="var(--color-ink-faint)" />
+      <circle cx="52" cy="15" r="8" fill="var(--color-ai)" />
+      <circle cx="32" cy="33" r="8" fill="var(--color-accent)" />
+      <circle cx="12" cy="15" r="3.6" fill="var(--color-surface)" />
+      <circle cx="32" cy="15" r="3.6" fill="var(--color-surface)" />
+      <circle cx="52" cy="15" r="3.6" fill="var(--color-surface)" />
+      <circle cx="32" cy="33" r="3.6" fill="var(--color-surface)" />
+    </svg>
+  );
+}
+
 export function Btn({
   variant = "default",
   className,
