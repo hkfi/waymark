@@ -30,6 +30,7 @@ import {
   useWorkspace,
 } from "./AppProvider";
 import { useAppUpdates } from "./hooks/useAppUpdates";
+import { useAppVersion } from "./hooks/useAppVersion";
 import { useCommandKeyHint } from "./hooks/useCommandKeyHint";
 
 const NOTICE_TOAST_ID = "feedback-notice";
@@ -78,10 +79,12 @@ function ToolbarRegion() {
   const feedback = useFeedbackActions();
   const layout = useLayout();
   const workspace = useWorkspace();
+  const appVersion = useAppVersion();
   const updates = useAppUpdates(feedback);
 
   return (
     <WorkspaceToolbar
+      appVersion={appVersion}
       workspace={workspace.data}
       project={workspace.selectedProject}
       rootPath={workspace.rootPath}

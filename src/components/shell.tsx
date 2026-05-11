@@ -7,6 +7,7 @@ import { Btn, CommandShortcutBadge, cx, LetterMark } from "./primitives";
 import { ticketWarnings } from "../workspace";
 
 export function WorkspaceToolbar({
+  appVersion,
   workspace,
   project,
   rootPath,
@@ -19,6 +20,7 @@ export function WorkspaceToolbar({
   onOpenFolder,
   onOpenConfig,
 }: {
+  appVersion: string;
   workspace: WorkspaceData | null;
   project: WaymarkProject | null;
   rootPath: string;
@@ -65,6 +67,13 @@ export function WorkspaceToolbar({
       style={style}
     >
       <div data-tauri-drag-region className="app-toolbar-brand flex items-center gap-1 pr-2 min-w-0">
+        <span
+          data-tauri-drag-region
+          title={`Waymark ${appVersion}`}
+          className="h-[22px] px-2 rounded-[3px] text-[11px] font-mono text-ink-faint border border-line-soft bg-surface-2 inline-flex items-center gap-1.5 shrink-0"
+        >
+          v{appVersion}
+        </span>
         {updateButton}
       </div>
       <div data-tauri-drag-region className="app-toolbar-path flex items-center justify-center gap-2 font-mono text-[11px] text-ink-faint min-w-0 px-3 overflow-hidden">

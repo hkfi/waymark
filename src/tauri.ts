@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import type { CodexStatus } from "./types";
 
 declare global {
@@ -45,6 +46,10 @@ export async function openPath(path: string) {
 
 export async function chooseDirectory(title = "Open Waymark workspace") {
   return invoke<string | null>("choose_directory", { title });
+}
+
+export async function appVersion() {
+  return getVersion();
 }
 
 export interface NativeCodexRunRequest {
