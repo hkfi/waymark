@@ -44,6 +44,8 @@ When a change should not trigger a desktop release, do not bump the app version.
 
 The release workflow runs on pushes to `main`. It publishes only when `src-tauri/tauri.conf.json` has a new version compared with the previous `main` commit. Manual dispatch also publishes the current version.
 
+Release jobs build native packages on matching GitHub runners where practical: Apple Silicon macOS on `macos-latest`, Intel macOS on `macos-15-intel`, Linux on `ubuntu-22.04`, and Windows on `windows-latest`. Keep the Intel macOS job on an Intel runner so the `x86_64-apple-darwin` bundle is not cross-packaged from an Apple Silicon runner.
+
 The macOS app is currently ad-hoc signed with `bundle.macOS.signingIdentity = "-"` and `bundle.macOS.hardenedRuntime = false`. This prevents the bundle from being completely unsigned, which is especially important for Apple Silicon downloads, but it is not Apple notarization.
 
 Until Developer ID notarization is configured, install MVP macOS builds to the user-local Applications folder:

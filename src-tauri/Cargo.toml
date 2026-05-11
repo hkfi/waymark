@@ -1,6 +1,6 @@
 [package]
 name = "waymark"
-version = "0.1.7"
+version = "0.1.8"
 description = "A local-first project cockpit for AI-assisted software work."
 authors = ["Waymark"]
 edition = "2021"

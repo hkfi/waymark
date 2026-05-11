@@ -68,23 +68,27 @@ jobs:
           NODE
 
   publish:
-    name: Publish ${{ needs.detect-release.outputs.version }} (${{ matrix.platform }})
+    name: Publish ${{ needs.detect-release.outputs.version }} (${{ matrix.label }})
     needs: detect-release
     if: needs.detect-release.outputs.should_release == 'true'
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-latest
+          - label: macOS Apple Silicon
+            platform: macos-latest
             args: --target aarch64-apple-darwin
-            rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
-          - platform: macos-latest
+            rust_targets: aarch64-apple-darwin
+          - label: macOS Intel
+            platform: macos-15-intel
             args: --target x86_64-apple-darwin
-            rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
-          - platform: ubuntu-22.04
+            rust_targets: x86_64-apple-darwin
+          - label: Linux
+            platform: ubuntu-22.04
             args: ""
             rust_targets: ""
-          - platform: windows-latest
+          - label: Windows
+            platform: windows-latest
             args: ""
             rust_targets: ""
     runs-on: ${{ matrix.platform }}
