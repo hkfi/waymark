@@ -365,12 +365,16 @@ function validateProject(project: WaymarkProject) {
   if (folderName && folderName !== config.slug) {
     warnings.push(`project.yaml: slug: Expected "${folderName}" to match the project folder.`);
   }
-  if (!config.current_focus) warnings.push("project.yaml: current_focus: Missing current focus.");
-  if (!config.repos?.length) warnings.push("project.yaml: repos: No linked repos.");
-  if (!project.links.length) {
+  const hasOperationalMemory =
+    project.tickets.length > 0 ||
+    project.threads.length > 0 ||
+    project.ideas.length > 0 ||
+    project.decisions.length > 0;
+  if (!config.current_focus && hasOperationalMemory) warnings.push("project.yaml: current_focus: Missing current focus.");
+  if (!config.repos?.length && hasOperationalMemory) warnings.push("project.yaml: repos: No linked repos.");
+  if (!project.links.length && !config.repos?.length && hasOperationalMemory) {
     warnings.push("links.yaml: links: No typed context records.");
   }
-  if (!project.tickets.length) warnings.push("tickets.yaml: tickets: No local tickets.");
   const hasProductionContext = project.links.some((link) =>
     link.environment === "production" || link.id === "production" || link.type === "deploy",
   );
@@ -1441,7 +1445,7 @@ export function buildDemoWorkspace(): WorkspaceData {
     threads: [],
     ideas: [],
     decisions: [],
-    warnings: ["links.yaml: links: No typed context records."],
+    warnings: [],
   };
   return {
     rootPath,

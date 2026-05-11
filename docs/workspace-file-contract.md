@@ -284,11 +284,13 @@ Waymark should prefer specific warnings over silent drops:
 - invalid records in `tickets.yaml`, `links.yaml`, and `threads.yaml` are skipped while valid sibling records still load
 - warnings include the file and field path, such as `tickets.yaml: tickets[0].status`
 - idea and decision frontmatter warnings name the Markdown file
-- missing operational context warnings name the relevant canonical file, such as `project.yaml: repos` or `links.yaml: links`
+- missing operational context warnings name the relevant canonical file, such as `project.yaml: repos` or `links.yaml: links`, once the project has operational memory records
 - missing ticket `summary` and `acceptance_criteria` warnings apply to active work only: `now`, `next`, and `blocked`
 - missing thread `summary_file` warnings apply to completed threads and threads linked to tickets
 
 Validation should not rewrite files. Cleanup, migration, or schema repair should remain a previewed user action.
+
+First-run readiness gaps should be guided in the UI instead of counted as file warnings. A new project with no tickets, no typed Context records, or no current focus is incomplete, not broken; Waymark should show a setup checklist and calls to action such as adding repos, adding Context, capturing a ticket, or preparing a `Suggest next steps` Assistant prompt. Linked repos in `project.yaml.repos` count as Context rows, so `links.yaml` should not warn only because a repo-backed project has not added extra typed links yet.
 
 ## MVP Readiness Policy
 
@@ -303,5 +305,7 @@ Readiness gaps should remain warnings through MVP, not hard schema requirements:
 
 - ticket `summary` and `acceptance_criteria` are optional in `tickets.yaml`, but missing values warn for `now`, `next`, and `blocked` tickets
 - thread `summary_file` is optional in `threads.yaml`, but missing values warn for completed threads and threads linked to tickets
+- missing first tickets are handled as an empty-state workflow, not a validation warning
+- missing current focus, repos, or typed Context records should become validation warnings only after the project has operational memory that makes those gaps relevant to handoff readiness
 
 This keeps Waymark useful for rough planning and partial memory capture while still making agent-readiness gaps visible. Hard requirements can be reconsidered after MVP if warning-only validation proves too weak in real use.

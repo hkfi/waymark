@@ -18,6 +18,7 @@ import {
   Rocket,
   Send,
   Server,
+  Sparkles,
   Trash2,
   type LucideIcon,
 } from "lucide-react";
@@ -26,6 +27,7 @@ import { contextRowKey, contextRowRemoveConfirmation, contextRowRemoveLabel, con
 import { openPath } from "../tauri";
 import type { LinkRecord, NoteRecord, ThreadRecord, Ticket, WaymarkProject, WorkspaceData } from "../types";
 import { ticketWarnings } from "../workspace";
+import { buildProjectNextStepsPrompt, type AssistantLaunchInput } from "../assistant";
 import { LANES_IN_QUEUE, LANE_LABEL, activeLane, buildActivity, matchesSearch, projectFile, ticketHasFlag, type Lane, type NavId } from "../app/model";
 import { Btn, Card, Cell, DataRow, EmptyRow, Flag, IconButton, Pin, SectionHead, cx } from "./primitives";
 
@@ -100,6 +102,8 @@ export function CockpitContent({
   onAddFile,
   onAddLink,
   onOnboardRepo,
+  onCapture,
+  onAskAssistant,
   onToggleLinkHandoff,
   onDeleteContextRow,
   selectedContextKey,
@@ -121,11 +125,21 @@ export function CockpitContent({
   onAddFile: () => void;
   onAddLink: () => void;
   onOnboardRepo: () => void;
+  onCapture: () => void;
+  onAskAssistant: (request: AssistantLaunchInput) => void;
   onToggleLinkHandoff: (link: LinkRecord, included: boolean) => void;
   onDeleteContextRow: (row: ContextRow) => void;
   selectedContextKey: string | null;
   onSelectContext: (row: ContextRow) => void;
 }) {
+  const askProjectNextSteps = () => onAskAssistant({
+    mode: "structure",
+    prompt: buildProjectNextStepsPrompt(project),
+    actionLabel: "Suggest next steps",
+    explanation: "Ask Codex to propose reviewable tickets, decisions, and ideas for this project.",
+    notice: "Loaded a next-step prompt. Review the context notice, then send it to Codex when ready.",
+  });
+
   if (nav === "tickets") {
     return (
       <>
@@ -140,6 +154,9 @@ export function CockpitContent({
           gapsOnly={gapsOnly}
           title="Tickets"
           lanesToShow={[...LANES_IN_QUEUE, "done"]}
+          onAskNextSteps={askProjectNextSteps}
+          onCreateTicket={onCapture}
+          onOnboardRepo={onOnboardRepo}
         />
       </>
     );
@@ -175,6 +192,13 @@ export function CockpitContent({
   return (
     <>
       <Stats project={project} />
+      <ProjectSetupPanel
+        project={project}
+        onAskNextSteps={askProjectNextSteps}
+        onCreateTicket={onCapture}
+        onOnboardRepo={onOnboardRepo}
+        onAddContext={onAddLink}
+      />
       <Queue
         project={project}
         selectedKey={selectedTicketId}
@@ -187,6 +211,9 @@ export function CockpitContent({
         lanesToShow={["now", "next"]}
         empty="No Now or Next tickets match."
         onViewAll={() => onNav("tickets")}
+        onAskNextSteps={askProjectNextSteps}
+        onCreateTicket={onCapture}
+        onOnboardRepo={onOnboardRepo}
       />
       <WarningsPanel project={project} workspace={workspace} search={search} gapsOnly={gapsOnly} />
       <ContextPreview project={project} search={search} onViewAll={() => onNav("context")} />
@@ -210,6 +237,9 @@ function Queue({
   lanesToShow = [...LANES_IN_QUEUE, "done"],
   empty = "No tickets match.",
   onViewAll,
+  onAskNextSteps,
+  onCreateTicket,
+  onOnboardRepo,
 }: {
   project: WaymarkProject;
   selectedKey: string | null;
@@ -222,6 +252,9 @@ function Queue({
   lanesToShow?: Lane[];
   empty?: string;
   onViewAll?: () => void;
+  onAskNextSteps?: () => void;
+  onCreateTicket?: () => void;
+  onOnboardRepo?: () => void;
 }) {
   const lanes = useMemo(() => {
     const filter = search.trim().toLowerCase();
@@ -264,7 +297,15 @@ function Queue({
       </SectionHead>
       <Card>
         {lanes.length === 0 ? (
-          <EmptyRow>{empty}</EmptyRow>
+          project.tickets.length === 0 && !search.trim() && !gapsOnly ? (
+            <EmptyTicketState
+              onAskNextSteps={onAskNextSteps}
+              onCreateTicket={onCreateTicket}
+              onOnboardRepo={onOnboardRepo}
+            />
+          ) : (
+            <EmptyRow>{empty}</EmptyRow>
+          )
         ) : (
           lanes.map((group) => (
             <div key={group.lane}>
@@ -290,6 +331,111 @@ function Queue({
           ))
         )}
       </Card>
+    </div>
+  );
+}
+
+function ProjectSetupPanel({
+  project,
+  onAskNextSteps,
+  onCreateTicket,
+  onOnboardRepo,
+  onAddContext,
+}: {
+  project: WaymarkProject;
+  onAskNextSteps: () => void;
+  onCreateTicket: () => void;
+  onOnboardRepo: () => void;
+  onAddContext: () => void;
+}) {
+  const items = [
+    { key: "focus", label: "Current focus", done: Boolean(project.config.current_focus?.trim()) },
+    { key: "repo", label: "Repository", done: Boolean(project.config.repos?.length) },
+    { key: "context", label: "Project context", done: project.links.length > 0 },
+    { key: "tickets", label: "First tickets", done: project.tickets.length > 0 },
+  ];
+  const openItems = items.filter((item) => !item.done);
+  if (openItems.length === 0) return null;
+
+  return (
+    <div className="mb-[22px]">
+      <SectionHead>
+        Next Steps <span className="font-mono text-[10px] text-ink-mute font-normal normal-case tracking-normal">{openItems.length} open</span>
+      </SectionHead>
+      <Card className="p-3">
+        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            {items.map((item) => (
+              <div
+                key={item.key}
+                className={cx(
+                  "flex min-w-0 items-center gap-2 rounded-[4px] border px-2.5 py-2 text-[12px]",
+                  item.done
+                    ? "border-[oklch(0.74_0.13_150_/_0.24)] bg-[oklch(0.74_0.13_150_/_0.08)] text-ink-soft"
+                    : "border-line-soft bg-surface-input-2 text-ink-faint",
+                )}
+              >
+                {item.done ? <Check size={12} className="shrink-0 text-lane-done" /> : <span className="h-2 w-2 shrink-0 rounded-full bg-warn" />}
+                <span className="truncate">{item.label}</span>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap justify-start gap-2 xl:justify-end">
+            <Btn variant="ai" onClick={onAskNextSteps}>
+              <Sparkles size={11} /> Suggest next steps
+            </Btn>
+            <Btn onClick={onCreateTicket}>
+              <Plus size={11} /> Ticket
+            </Btn>
+            {!project.config.repos?.length ? (
+              <Btn onClick={onOnboardRepo}>
+                <GitBranch size={11} /> Repo
+              </Btn>
+            ) : null}
+            {project.links.length === 0 ? (
+              <Btn onClick={onAddContext}>
+                <Link2 size={11} /> Context
+              </Btn>
+            ) : null}
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function EmptyTicketState({
+  onAskNextSteps,
+  onCreateTicket,
+  onOnboardRepo,
+}: {
+  onAskNextSteps?: () => void;
+  onCreateTicket?: () => void;
+  onOnboardRepo?: () => void;
+}) {
+  return (
+    <div className="px-4 py-5 text-[12.5px] text-ink-faint">
+      <div className="mb-2 text-[13px] font-semibold text-ink">No tickets yet</div>
+      <div className="max-w-[620px] leading-[1.55]">
+        Start with a concrete next step, or ask Codex to turn the current project context into reviewable ticket drafts.
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {onAskNextSteps ? (
+          <Btn variant="ai" onClick={onAskNextSteps}>
+            <Sparkles size={11} /> Suggest next steps
+          </Btn>
+        ) : null}
+        {onCreateTicket ? (
+          <Btn onClick={onCreateTicket}>
+            <Plus size={11} /> Create ticket
+          </Btn>
+        ) : null}
+        {onOnboardRepo ? (
+          <Btn onClick={onOnboardRepo}>
+            <GitBranch size={11} /> Add repo
+          </Btn>
+        ) : null}
+      </div>
     </div>
   );
 }

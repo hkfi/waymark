@@ -245,6 +245,14 @@ function MainContentRegion() {
             }
             modals.openRepoOnboarding();
           }}
+          onCapture={() => {
+            if (!isTauri()) {
+              feedback.setNotice("Run Waymark through Tauri to capture tickets into YAML.");
+              return;
+            }
+            modals.openCapture();
+          }}
+          onAskAssistant={selection.openAssistant}
           onToggleLinkHandoff={(link, included) =>
             actions.updateLink({
               ...link,

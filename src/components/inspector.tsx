@@ -69,6 +69,7 @@ export function Inspector({
   recordTransaction: RecordTransaction;
 }) {
   const bundleSize = multi.length;
+  const hasProject = Boolean(project && workspace);
 
   return (
     <aside className="inspector-shell bg-surface-rail-2 border-l border-line flex flex-col min-h-0 min-w-0 overflow-hidden">
@@ -127,55 +128,59 @@ export function Inspector({
         </button>
       </div>
 
-      {!project || !workspace ? (
+      {!hasProject ? (
         <InspectorEmpty>Open a workspace to see ticket details.</InspectorEmpty>
-      ) : mode === "ticket" ? (
-        ticket ? (
-          <InspectorTicket
-            project={project}
-            ticket={ticket}
-            onStatus={onStatus}
-            onSendHandoff={onSendHandoff}
-            onEdit={onEditTicket}
-            onDelete={onDeleteTicket}
-            onDeletePromptReference={onDeletePromptReference}
-            onAskAssistant={onAskAssistant}
-          />
-        ) : (
-          <InspectorEmpty>Select a ticket to inspect.</InspectorEmpty>
-        )
-      ) : mode === "prompt" ? (
-        <InspectorPrompt
-          project={project}
-          ticket={ticket}
-          multi={multi}
-          workspace={workspace}
-          onSendHandoff={onSendHandoff}
-          handoffOptions={handoffOptions}
-          selectedHandoffContextIds={selectedHandoffContextIds}
-          onToggleHandoffContext={onToggleHandoffContext}
-        />
-      ) : mode === "assistant" ? (
-        <div className="flex-1 min-h-0 overflow-hidden px-3 py-3">
-          <AssistantView
-            project={project}
-            selection={{ ticket, thread, note, bundle: multi }}
-            launchRequest={assistantLaunchRequest}
-            onLaunchConsumed={onAssistantLaunchConsumed}
-            onSaved={onSaved}
-            recordTransaction={recordTransaction}
-          />
-        </div>
-      ) : mode === "thread" ? (
-        <InspectorThread project={project} ticket={ticket} selectedThread={thread} onDelete={onDeleteThread} />
-      ) : mode === "context" ? (
-        <InspectorContext
-          row={contextRow}
-          onToggleHandoff={onToggleContextHandoff}
-          onDeleteRow={onDeleteContextRow}
-        />
       ) : (
-        <InspectorNote note={note} onAskAssistant={onAskAssistant} onDelete={onDeleteNote} />
+        <>
+          <div className={cx("flex-1 min-h-0 overflow-hidden px-3 py-3", mode === "assistant" ? "block" : "hidden")}>
+            <AssistantView
+              key={project!.rootPath}
+              project={project!}
+              selection={{ ticket, thread, note, bundle: multi }}
+              launchRequest={assistantLaunchRequest}
+              onLaunchConsumed={onAssistantLaunchConsumed}
+              onSaved={onSaved}
+              recordTransaction={recordTransaction}
+            />
+          </div>
+          {mode === "assistant" ? null : mode === "ticket" ? (
+            ticket ? (
+              <InspectorTicket
+                project={project!}
+                ticket={ticket}
+                onStatus={onStatus}
+                onSendHandoff={onSendHandoff}
+                onEdit={onEditTicket}
+                onDelete={onDeleteTicket}
+                onDeletePromptReference={onDeletePromptReference}
+                onAskAssistant={onAskAssistant}
+              />
+            ) : (
+              <InspectorEmpty>Select a ticket to inspect.</InspectorEmpty>
+            )
+          ) : mode === "prompt" ? (
+            <InspectorPrompt
+              project={project!}
+              ticket={ticket}
+              multi={multi}
+              workspace={workspace!}
+              onSendHandoff={onSendHandoff}
+              handoffOptions={handoffOptions}
+              selectedHandoffContextIds={selectedHandoffContextIds}
+              onToggleHandoffContext={onToggleHandoffContext}
+            />
+          ) : mode === "thread" ? (
+            <InspectorThread project={project!} ticket={ticket} selectedThread={thread} onDelete={onDeleteThread} />
+          ) : mode === "context" ? (
+            <InspectorContext
+              row={contextRow}
+              onToggleHandoff={onToggleContextHandoff}
+              onDeleteRow={onDeleteContextRow}
+            />
+          ) : (
+            <InspectorNote note={note} onAskAssistant={onAskAssistant} onDelete={onDeleteNote} />
+          )}
+        </>
       )}
     </aside>
   );

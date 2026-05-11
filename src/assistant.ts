@@ -283,6 +283,37 @@ ${note.body || "(empty)"}
 Return structured Waymark drafts that turn this ${note.type} into useful project memory. Prefer candidate tickets, follow-up decisions, or concise ideas. Link to existing ticket IDs only when they clearly apply. For new ticket drafts, set id to an empty string. Do not invent IDs for new tickets.`;
 }
 
+export function buildProjectNextStepsPrompt(project: WaymarkProject) {
+  const repoSummary = project.config.repos?.length
+    ? project.config.repos.map((repo) => `- ${repo.name} (${repo.id})${repo.path ? ` at ${repo.path}` : ""}${repo.url ? `, ${repo.url}` : ""}`).join("\n")
+    : "- No linked repos yet.";
+  const contextSummary = project.links.length
+    ? project.links.map((link) => `- ${link.label} (${link.type})`).join("\n")
+    : "- No typed context records yet.";
+
+  return `Suggest practical next steps for this Waymark project.
+
+Project:
+- name: ${project.config.name}
+- stage: ${project.config.stage}
+- status: ${project.config.status}
+- summary: ${project.config.summary}
+- current focus: ${project.config.current_focus || "(not set)"}
+
+Linked repos:
+${repoSummary}
+
+Typed context:
+${contextSummary}
+
+Return structured Waymark drafts for the next useful project-memory records. Prefer:
+- 3 to 5 concrete tickets with clear summaries and acceptance criteria
+- 1 or 2 decision drafts if the direction is ambiguous
+- concise ideas only for things worth parking
+
+For new ticket drafts, set id to an empty string. Do not invent IDs. Keep the output reviewable and avoid asking Waymark to scan whole repositories.`;
+}
+
 export function parseDraftSet(raw: string, source: WaymarkDraftSet["source"], project: WaymarkProject): WaymarkDraftSet {
   const parsed = draftSetSchema.parse(parseJson(raw));
   const warnings = [...parsed.warnings];

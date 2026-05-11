@@ -247,8 +247,8 @@ export function CreateProjectModal({
           const repo =
             repoName.trim() || repoPath.trim() || repoUrl.trim()
               ? {
-                  id: recordId(repoName || cleanName),
-                  name: repoName.trim() || `${cleanName} repo`,
+                  id: recordId(repoName || titleFromPath(repoPath) || cleanName),
+                  name: repoName.trim() || titleFromPath(repoPath) || `${cleanName} repo`,
                   ...(repoPath.trim() ? { path: repoPath.trim() } : {}),
                   ...(repoUrl.trim() ? { url: repoUrl.trim() } : {}),
                 }
@@ -348,8 +348,8 @@ export function CreateProjectModal({
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <div>
-            <FieldLabel>Repo name</FieldLabel>
-            <input value={repoName} onChange={(event) => setRepoName(event.target.value)} placeholder="App repo" className={cx(inputClass, "mt-1")} />
+            <FieldLabel>Repo display name</FieldLabel>
+            <input value={repoName} onChange={(event) => setRepoName(event.target.value)} placeholder="Optional" className={cx(inputClass, "mt-1")} />
           </div>
           <div>
             <FieldLabel>Repo path</FieldLabel>
@@ -387,7 +387,7 @@ export function RepoOnboardingModal({
   tauri: boolean;
   project: WaymarkProject;
   onClose: () => void;
-  onChooseRepo: () => Promise<string | null>;
+  onChooseRepo: (title?: string) => Promise<string | null>;
   onAddRepo: (repos: RepoRef[], instructionDrafts: RepoInstructionDraft[]) => Promise<void>;
 }) {
   const [repoPath, setRepoPath] = useState("");
@@ -457,7 +457,7 @@ export function RepoOnboardingModal({
   async function chooseRepo() {
     setError(null);
     try {
-      const selected = await onChooseRepo();
+      const selected = await onChooseRepo("Choose a repository folder to link");
       if (!selected) return;
       setRepoPath(selected);
       if (!repoNameEdited) setRepoName(titleFromPath(selected));
@@ -468,11 +468,7 @@ export function RepoOnboardingModal({
 
   function addRepoToReview() {
     if (!cleanPath) {
-      setError("Choose a local repo folder.");
-      return;
-    }
-    if (!derivedName.trim()) {
-      setError("Repo name is required.");
+      setError("Choose a local repository folder.");
       return;
     }
     if (duplicatePath) {
@@ -515,7 +511,7 @@ export function RepoOnboardingModal({
   }
 
   return (
-    <ModalFrame title={`Onboard repo into ${project.config.name}`} onClose={onClose}>
+    <ModalFrame title={`Onboard repositories for ${project.config.name}`} onClose={onClose}>
       <form
         onKeyDown={submitOnCommandEnter}
         onSubmit={async (event) => {
@@ -525,10 +521,10 @@ export function RepoOnboardingModal({
         className="flex flex-col gap-3"
       >
         <p className="m-0 text-[12.5px] leading-[1.55] text-ink-faint">
-          Add one or more local repository references, review Waymark scaffold writes, and optionally write repo instruction drafts.
+          Link one or more local repository folders to this Waymark project. The folder name becomes the display name unless you change it.
         </p>
         <div>
-          <FieldLabel>Repo folder</FieldLabel>
+          <FieldLabel>Repository folder</FieldLabel>
           <div className="grid grid-cols-[1fr_auto] gap-2 mt-1">
             <input
               value={repoPath}
@@ -544,36 +540,44 @@ export function RepoOnboardingModal({
               <FolderOpen size={13} /> Browse
             </Btn>
           </div>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <div>
-            <FieldLabel>Repo name</FieldLabel>
-            <input
-              value={repoName}
-              onChange={(event) => {
-                setRepoNameEdited(true);
-                setRepoName(event.target.value);
-              }}
-              placeholder={titleFromPath(cleanPath) || "App repo"}
-              className={cx(inputClass, "mt-1")}
-            />
-          </div>
-          <div>
-            <FieldLabel>Repo URL</FieldLabel>
-            <input value={repoUrl} onChange={(event) => setRepoUrl(event.target.value)} placeholder="https://github.com/..." className={cx(inputClass, "mt-1")} />
+          <div className="mt-1 text-[11.5px] text-ink-mute">
+            Display name: <span className="text-ink-soft">{derivedName || "Choose a folder"}</span>
           </div>
         </div>
+        <details className="rounded-[5px] border border-line-soft bg-surface-input-2">
+          <summary className="cursor-pointer select-none px-2.5 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-faint hover:text-ink">
+            Advanced repo details
+          </summary>
+          <div className="grid grid-cols-1 gap-2 border-t border-line-soft p-2.5 sm:grid-cols-2">
+            <div>
+              <FieldLabel>Display name</FieldLabel>
+              <input
+                value={repoName}
+                onChange={(event) => {
+                  setRepoNameEdited(true);
+                  setRepoName(event.target.value);
+                }}
+                placeholder={titleFromPath(cleanPath) || "App repo"}
+                className={cx(inputClass, "mt-1")}
+              />
+            </div>
+            <div>
+              <FieldLabel>Repo URL</FieldLabel>
+              <input value={repoUrl} onChange={(event) => setRepoUrl(event.target.value)} placeholder="https://github.com/..." className={cx(inputClass, "mt-1")} />
+            </div>
+          </div>
+        </details>
         <div className="flex justify-end">
           <Btn type="submit" disabled={!tauri || !cleanPath || duplicatePath}>
-            <Plus size={11} /> Add to review
+            <Plus size={11} /> {repos.length ? "Add another repository" : "Add repository"}
           </Btn>
         </div>
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
           <div>
-            <FieldLabel>Waymark workspace writes</FieldLabel>
+            <FieldLabel>Repositories to add</FieldLabel>
             <div className="mt-1 rounded-[4px] border border-line-soft bg-surface-1 p-2 min-h-[132px]">
               <div className="text-[11.5px] text-ink-soft mb-2">
-                {repos.length ? `${repos.length} repo entr${repos.length === 1 ? "y" : "ies"} will be added to project.yaml.` : "No repo entries queued yet."}
+                {repos.length ? `${repos.length} repositor${repos.length === 1 ? "y" : "ies"} will be added to project.yaml.` : "No repositories queued yet."}
               </div>
               {repos.length ? (
                 <div className="grid gap-2">
@@ -662,7 +666,7 @@ export function RepoOnboardingModal({
         <div className="flex gap-2 justify-end">
           <Btn type="button" variant="ghost" onClick={onClose}>Cancel</Btn>
           <Btn type="button" variant="primary" onClick={saveOnboarding} disabled={!tauri || busy || repos.length === 0}>
-            <Plus size={11} /> Save onboarding
+            <Plus size={11} /> Save repositories
           </Btn>
         </div>
       </form>

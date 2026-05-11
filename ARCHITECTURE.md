@@ -146,6 +146,8 @@ Prompt generation should:
 
 The Codex-backed Assistant is an explicitly promoted optional right-drawer surface available from every cockpit view. It detects the user's local Codex install, relies on Codex's own local auth, starts an ephemeral read-only app-server thread, and sends project plus current selection context only after the user confirms the session notice.
 
+Assistant conversation and draft-review state may stay mounted while the user switches inspector tabs within the same project, but it remains non-canonical UI state unless the user explicitly saves reviewed records or summaries.
+
 The assistant should:
 
 - request structured drafts for tickets, ideas, decisions, and thread references

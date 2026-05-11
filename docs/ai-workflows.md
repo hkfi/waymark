@@ -42,6 +42,8 @@ The Assistant drawer is an explicitly promoted AI surface for project-memory bra
 
 The Assistant connection panel should separate connection state from connection actions. When local auth is ready, the UI should read as connected and offer a switch-account action rather than implying the user still needs to connect. Codex and ChatGPT should not appear as separate account choices here; Waymark uses the local Codex runtime as the OpenAI account connection. Route, model, reasoning, import, and account controls should live behind Advanced controls so the default Assistant surface stays focused on the current action, context notice, prompt, result, and draft review. The default is `Latest` model with `High` reasoning. `Latest` means Waymark does not pin a model override and lets the local Codex runtime use its current latest/default model.
 
+The Assistant keeps its in-memory conversation, prompt, and draft review mounted while the user switches inspector tabs inside the same project. This state is still session-only and non-canonical: it resets when the selected project changes or the app closes unless the user explicitly saves reviewed drafts or thread summaries.
+
 The intended loop:
 
 1. User opens a project and opens Assistant from the header, right drawer, or shortcut.
@@ -66,6 +68,8 @@ Meaningful project-memory fields may offer contextual Codex recommendations. Goo
 Accepted records should preserve provenance when practical. If a ticket, decision, idea, or summary came from a Codex conversation, Waymark should let the user link it to a saved thread reference or summary so future handoffs can understand where the rationale came from without assuming Waymark can read private Codex history.
 
 Contextual recommendation buttons should use explicit action labels such as improving a summary, drafting checks, suggesting next steps, or turning a note into records. AI-related setup, navigation, and prompt-fill controls should use a cyan-blue treatment and must not contact Codex by themselves. Controls that actually send selected project context to Codex and consume tokens should use a distinct run treatment. Contextual actions should open Assistant with a prepared prompt; the user invokes Codex with one clear `Send to Codex` or `Run Codex` action after seeing the context notice. No files are written until drafts are reviewed and saved.
+
+Early-project empty states may prepare a `Suggest next steps` Assistant prompt that asks Codex for a small set of reviewable tickets, decisions, or ideas based on the current project and linked repos. The button should open the Assistant and fill the prompt only; the user still sends the request explicitly after seeing the context notice.
 
 Contextual recommendations should:
 
@@ -112,7 +116,7 @@ The intended loop:
 5. User reviews, edits, and accepts the proposed project summary, tickets, decisions, thread references, repo instructions, or handoff context.
 6. Waymark writes only the accepted files or records through its controlled write helpers.
 
-During MVP, the deterministic onboarding path is the default: users can queue one or more local repo folders, preview the `project.yaml` repo entries, preview any missing Waymark scaffold files, and optionally accept small generated `AGENTS.md` repo-instruction drafts. Existing repo instruction files are not overwritten. Codex-generated onboarding records remain an optional Assistant workflow and should only run after the user explicitly confirms sending selected project context through the local Codex connection.
+During MVP, the deterministic onboarding path is the default: users can queue one or more local repo folders, preview the `project.yaml` repo entries, preview any missing Waymark scaffold files, and optionally accept small generated `AGENTS.md` repo-instruction drafts. Repo display names are derived from folder names by default, with optional display-name and URL fields behind Advanced controls. Existing repo instruction files are not overwritten. Codex-generated onboarding records remain an optional Assistant workflow and should only run after the user explicitly confirms sending selected project context through the local Codex connection.
 
 Repo onboarding should:
 

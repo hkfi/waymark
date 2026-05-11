@@ -85,6 +85,7 @@ tickets:
       - Codex and ChatGPT are not presented as separate account choices because Waymark uses the local Codex runtime as the shared OpenAI connection.
       - The default assistant settings are Latest model and High reasoning, with explicit controls to pin another supported model or effort.
       - App-server mode starts an ephemeral read-only Codex thread and streams assistant deltas into the conversation.
+      - The Assistant conversation, prompt, and draft review stay available while switching inspector tabs within the same project.
       - CLI execution remains available as a fallback when app-server start or turn execution fails.
       - Brainstorm, structure, and pasted-output capture flow into the same draft review model.
       - Draft tickets, ideas, decisions, and thread references are editable and selected before any Markdown/YAML write.
@@ -138,6 +139,7 @@ tickets:
       - Contextual Codex buttons use explicit outcome labels instead of vague Ask copy.
       - Codex recommendation actions use a cyan-blue AI treatment distinct from amber handoff actions.
       - Contextual recommendation buttons prepare Assistant prompts but never invoke Codex directly.
+      - Empty ticket and early setup states can prepare a next-step Assistant prompt without running Codex automatically.
       - The Assistant default view hides advanced route, model, reasoning, connection, and import controls.
       - Browser/demo and disconnected Codex states explain why recommendations cannot run.
       - Token-consuming Codex run controls are visually distinct from AI setup, navigation, and prompt-fill controls.
@@ -246,7 +248,9 @@ tickets:
     summary: Let users explicitly add local repos to a Waymark project, scaffold missing project memory, and optionally ask Codex to draft review-gated repo context files.
     acceptance_criteria:
       - A user can add one or more local repo folders to a Waymark project through an explicit action.
+      - Repo display names are derived from folder names by default, with optional display name and URL fields behind Advanced controls.
       - Added repos are saved as readable project.yaml repo references and remain editable by hand.
+      - First-run gaps for focus, Context, and tickets appear as setup guidance instead of immediate warnings.
       - The onboarding flow detects missing Waymark memory files and presents deterministic scaffolds before writing them.
       - Codex can optionally draft a project summary, initial tickets, decisions, handoff context, and repo agent instructions.
       - Generated drafts distinguish Waymark workspace files from files that would be written into a linked repo.
